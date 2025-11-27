@@ -1,8 +1,11 @@
 import NextAuth from "next-auth";
 import GoogleProvider from "next-auth/providers/google";
 import GitHubProvider from "next-auth/providers/github";
+import { PrismaAdapter } from "@auth/prisma-adapter";
+import prisma from "@/lib/db";
 
 const handler = NextAuth({
+  adapter: PrismaAdapter(prisma),
   providers: [
     // Google OAuth Provider
     GoogleProvider({
@@ -18,11 +21,14 @@ const handler = NextAuth({
   pages: {
     signIn: "/login", // Custom login page (optional)
   },
+  session: {
+    strategy: "database", // Use database sessions with Prisma adapter
+  },
   callbacks: {
-    async session({ session, token }) {
-      // Add user ID to session
+    async session({ session, user }) {
+      // Add user ID to session (user comes from database with adapter)
       if (session.user) {
-        session.user.id = token.sub;
+        session.user.id = user.id;
       }
       return session;
     },

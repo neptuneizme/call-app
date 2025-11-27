@@ -1,0 +1,195 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ============================================
+// NextAuth Tables (for Google/GitHub OAuth)
+// ============================================
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model User {
+  id            String    @id @default(cuid())
+  name          String?
+  email         String?   @unique
+  emailVerified DateTime?
+  image         String?
+
+  // Relations
+  accounts         Account[]
+  sessions         Session[]
+  callParticipants CallParticipant[]
+  audioUploads     AudioUpload[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+// ============================================
+// Video Call Tables
+// ============================================
+
+model Call {
+  id        String     @id @default(cuid())
+  callId    String     @unique // Socket room ID or generated call ID
+  status    CallStatus @default(IN_PROGRESS)
+  startedAt DateTime   @default(now())
+  endedAt   DateTime?
+
+  // Relations
+  participants CallParticipant[]
+  audioUploads AudioUpload[]
+  summary      CallSummary?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([callId])
+  @@index([status])
+}
+
+model CallParticipant {
+  id       String    @id @default(cuid())
+  callId   String
+  oderId   String
+  role     String    @default("participant") // "caller" or "callee"
+  joinedAt DateTime  @default(now())
+  leftAt   DateTime?
+
+  // Relations
+  call Call @relation(fields: [callId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId String
+
+  @@unique([callId, userId])
+  @@index([callId])
+  @@index([userId])
+}
+
+// ============================================
+// Audio Upload & Transcription Tables
+// ============================================
+
+model AudioUpload {
+  id              String           @id @default(cuid())
+  callId          String
+  userId          String
+  filePath        String           // S3/storage path
+  fileSize        Int              // in bytes
+  durationSeconds Float?
+  mimeType        String           @default("audio/webm")
+  status          TranscriptStatus @default(PENDING)
+
+  // Relations
+  call          Call          @relation(fields: [callId], references: [id], onDelete: Cascade)
+  user          User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  transcription Transcription?
+
+  uploadedAt DateTime @default(now())
+
+  @@unique([callId, userId]) // One upload per user per call
+  @@index([callId])
+  @@index([status])
+}
+
+model Transcription {
+  id            String @id @default(cuid())
+  audioUploadId String @unique
+
+  // Whisper response data
+  textContent     String  @db.Text // Full transcript text
+  rawResponse     Json // Whisper verbose_json response
+  wordTimestamps  Json // Parsed timestamps for merging
+  language        String? // Detected language
+  durationSeconds Float?
+
+  // Relations
+  audioUpload AudioUpload @relation(fields: [audioUploadId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+}
+
+// ============================================
+// Call Summary Table
+// ============================================
+
+model CallSummary {
+  id     String @id @default(cuid())
+  callId String @unique
+
+  // Merged & processed data
+  mergedTranscript String @db.Text // Chronological merged script
+  summary          String @db.Text // GPT-4 generated summary
+  keyPoints        Json? // Optional structured key points
+  actionItems      Json? // Optional action items extracted
+
+  // Metadata
+  modelUsed  String @default("gpt-4")
+  tokensUsed Int?
+
+  // Relations
+  call Call @relation(fields: [callId], references: [id], onDelete: Cascade)
+
+  generatedAt DateTime @default(now())
+
+  @@index([callId])
+}
+
+// ============================================
+// Enums
+// ============================================
+
+enum CallStatus {
+  IN_PROGRESS // Call is active
+  AWAITING_UPLOADS // Call ended, waiting for audio uploads
+  PROCESSING // Both uploads received, transcribing/summarizing
+  COMPLETED // Summary generated successfully
+  FAILED // Processing failed
+}
+
+enum TranscriptStatus {
+  PENDING // Waiting to be processed
+  PROCESSING // Currently being transcribed
+  COMPLETED // Transcription done
+  FAILED // Transcription failed
+}
