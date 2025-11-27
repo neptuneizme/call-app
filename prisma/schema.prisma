@@ -91,7 +91,7 @@ model Call {
 model CallParticipant {
   id       String    @id @default(cuid())
   callId   String
-  oderId   String
+  userId   String
   role     String    @default("participant") // "caller" or "callee"
   joinedAt DateTime  @default(now())
   leftAt   DateTime?
@@ -99,7 +99,6 @@ model CallParticipant {
   // Relations
   call Call @relation(fields: [callId], references: [id], onDelete: Cascade)
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-  userId String
 
   @@unique([callId, userId])
   @@index([callId])
