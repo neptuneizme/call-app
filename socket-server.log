@@ -1,0 +1,22 @@
+(node:969) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///Users/thandong/Documents/GitHub/call-app/server/socket-server.js is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to /Users/thandong/Documents/GitHub/call-app/package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+Socket.IO server running on port 3001
+User connected: hjIPdbd7FAB2SOYYAAAC
+User connected: 5VXdhy11l8njGGHRAAAE
+Call from 5VXdhy11l8njGGHRAAAE to hjIPdbd7FAB2SOYYAAAC
+Answer call to 5VXdhy11l8njGGHRAAAE
+User disconnected: hjIPdbd7FAB2SOYYAAAC
+User disconnected: 5VXdhy11l8njGGHRAAAE
+User connected: R87yqKRgVCTeH4ZYAAAG
+User disconnected: R87yqKRgVCTeH4ZYAAAG
+User connected: joz4kR5b6WQUe5ujAAAJ
+User connected: S3DjdcXAlCqW7UfdAAAL
+User disconnected: joz4kR5b6WQUe5ujAAAJ
+User disconnected: S3DjdcXAlCqW7UfdAAAL
+User connected: PxLRIgm29XcQGVDjAAAO
+User disconnected: PxLRIgm29XcQGVDjAAAO
+User connected: LEHkmwAm3WqMIizAAAAR
+User disconnected: LEHkmwAm3WqMIizAAAAR
+User connected: hfs_hXEU2X86GSU5AAAU
