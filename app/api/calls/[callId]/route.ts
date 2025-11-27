@@ -3,6 +3,7 @@ import { getServerSession } from "next-auth";
 import prisma from "@/lib/db";
 import { authOptions } from "@/lib/auth";
 import { Prisma } from "@prisma/client";
+import { deleteFromS3 } from "@/lib/s3";
 
 type RouteContext = {
   params: Promise<{ callId: string }>;
@@ -167,6 +168,64 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
     console.error("Error updating call:", error);
     return NextResponse.json(
       { error: "Failed to update call" },
+      { status: 500 }
+    );
+  }
+}
+
+// DELETE /api/calls/[callId] - Delete a call and its associated data
+export async function DELETE(request: NextRequest, context: RouteContext) {
+  try {
+    const session = await getServerSession(authOptions);
+
+    if (!session?.user?.id) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const { callId } = await context.params;
+
+    // Find the call with audio uploads
+    const call = await prisma.call.findUnique({
+      where: { callId },
+      include: {
+        participants: true,
+        audioUploads: true,
+      },
+    });
+
+    if (!call) {
+      return NextResponse.json({ error: "Call not found" }, { status: 404 });
+    }
+
+    // Check if user is a participant
+    const isParticipant = call.participants.some(
+      (p) => p.userId === session.user!.id
+    );
+
+    if (!isParticipant) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+
+    // Delete audio files from S3
+    const deletePromises = call.audioUploads.map((upload) =>
+      deleteFromS3(upload.filePath).catch((err) => {
+        console.error(`Failed to delete S3 file: ${upload.filePath}`, err);
+        // Continue even if S3 delete fails
+      })
+    );
+
+    await Promise.all(deletePromises);
+
+    // Delete call from database (cascades to participants, uploads, summary)
+    await prisma.call.delete({
+      where: { id: call.id },
+    });
+
+    return NextResponse.json({ message: "Call deleted successfully" });
+  } catch (error) {
+    console.error("Error deleting call:", error);
+    return NextResponse.json(
+      { error: "Failed to delete call" },
       { status: 500 }
     );
   }
