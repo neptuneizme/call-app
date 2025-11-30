@@ -115,9 +115,9 @@ export default function CallHistoryCard({
   return (
     <div className="bg-gray-800 rounded-xl overflow-hidden transition-all duration-200 hover:bg-gray-750">
       {/* Main Row - Always Visible */}
-      <button
+      <div
         onClick={() => setIsExpanded(!isExpanded)}
-        className="w-full p-4 flex items-center justify-between text-left"
+        className="w-full p-4 flex items-center justify-between text-left cursor-pointer"
       >
         <div className="flex items-center gap-4 flex-1 min-w-0">
           {/* Participants */}
@@ -191,7 +191,7 @@ export default function CallHistoryCard({
             <ChevronDown className="w-5 h-5 text-gray-400" />
           )}
         </div>
-      </button>
+      </div>
 
       {/* Expanded Details */}
       {isExpanded && (

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import { Phone, RefreshCw, History, Loader2, AlertCircle } from "lucide-react";
@@ -112,9 +112,11 @@ export default function HistoryPage() {
   );
 
   // Redirect unauthenticated users
-  if (status === "unauthenticated") {
-    router.push("/login");
-  }
+  useEffect(() => {
+    if (status === "unauthenticated") {
+      router.push("/login");
+    }
+  }, [status, router]);
 
   // Load more
   const handleLoadMore = async () => {
