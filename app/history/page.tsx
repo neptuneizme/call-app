@@ -1,10 +1,11 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useState } from "react";
 import { useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import { Phone, RefreshCw, History, Loader2, AlertCircle } from "lucide-react";
 import CallHistoryCard from "@/app/components/CallHistoryCard";
+import useSWR from "swr";
 
 interface Participant {
   id: string;
@@ -52,6 +53,13 @@ interface HistoryResponse {
   hasMore: boolean;
 }
 
+// SWR fetcher
+const fetcher = (url: string) =>
+  fetch(url).then((res) => {
+    if (!res.ok) throw new Error("Failed to fetch history");
+    return res.json();
+  });
+
 // Polling interval in milliseconds
 const POLLING_INTERVAL = 5000; // 5 seconds
 
@@ -59,16 +67,26 @@ export default function HistoryPage() {
   const { data: session, status } = useSession();
   const router = useRouter();
 
-  const [calls, setCalls] = useState<Call[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [hasMore, setHasMore] = useState(false);
+  const [additionalCalls, setAdditionalCalls] = useState<Call[]>([]);
   const [offset, setOffset] = useState(0);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [deletingCallId, setDeletingCallId] = useState<string | null>(null);
-  const [isPolling, setIsPolling] = useState(false);
 
   const limit = 20;
+
+  // Use SWR for data fetching
+  const { data, error, isLoading, mutate } = useSWR<HistoryResponse>(
+    status === "authenticated" ? `/api/history?limit=${limit}&offset=0` : null,
+    fetcher,
+    {
+      revalidateOnFocus: true,
+      revalidateOnReconnect: true,
+    }
+  );
+
+  // Combine initial data with additional loaded calls
+  const calls = data ? [...data.calls, ...additionalCalls] : [];
+  const hasMore = data?.hasMore ?? false;
 
   // Check if any calls need polling (processing status)
   const needsPolling = calls.some(
@@ -78,88 +96,43 @@ export default function HistoryPage() {
       call.status === "PROCESSING"
   );
 
-  // Fetch history
-  const fetchHistory = useCallback(
-    async (newOffset: number = 0, append: boolean = false) => {
-      try {
-        if (!append) {
-          setIsLoading(true);
-        }
-        setError(null);
-
-        const response = await fetch(
-          `/api/history?limit=${limit}&offset=${newOffset}`
-        );
-
-        if (!response.ok) {
-          throw new Error("Failed to fetch history");
-        }
-
-        const data: HistoryResponse = await response.json();
-
-        if (append) {
-          setCalls((prev) => [...prev, ...data.calls]);
-        } else {
-          setCalls(data.calls);
-        }
-
-        setHasMore(data.hasMore);
-        setOffset(newOffset);
-      } catch (err) {
-        setError(err instanceof Error ? err.message : "An error occurred");
-      } finally {
-        setIsLoading(false);
-        setIsLoadingMore(false);
-      }
-    },
-    [limit]
+  // Use SWR's built-in refresh interval for polling
+  useSWR<HistoryResponse>(
+    status === "authenticated" && needsPolling
+      ? `/api/history?limit=${limit}&offset=0`
+      : null,
+    fetcher,
+    {
+      refreshInterval: POLLING_INTERVAL,
+      onSuccess: (newData) => {
+        // Update the main cache
+        mutate(newData, false);
+      },
+    }
   );
 
-  // Initial fetch
-  useEffect(() => {
-    if (status === "authenticated") {
-      fetchHistory();
-    } else if (status === "unauthenticated") {
-      router.push("/login");
-    }
-  }, [status, router, fetchHistory]);
-
-  // Polling for real-time updates
-  useEffect(() => {
-    if (!needsPolling || status !== "authenticated") {
-      setIsPolling(false);
-      return;
-    }
-
-    setIsPolling(true);
-
-    const intervalId = setInterval(() => {
-      // Silently refresh data
-      fetch(`/api/history?limit=${limit}&offset=0`)
-        .then((res) => res.json())
-        .then((data: HistoryResponse) => {
-          setCalls((prevCalls) => {
-            // Merge updates: update existing calls, keep loaded calls
-            const updatedCalls = [...prevCalls];
-            data.calls.forEach((newCall) => {
-              const index = updatedCalls.findIndex((c) => c.id === newCall.id);
-              if (index >= 0) {
-                updatedCalls[index] = newCall;
-              }
-            });
-            return updatedCalls;
-          });
-        })
-        .catch(console.error);
-    }, POLLING_INTERVAL);
-
-    return () => clearInterval(intervalId);
-  }, [needsPolling, status, limit]);
+  // Redirect unauthenticated users
+  if (status === "unauthenticated") {
+    router.push("/login");
+  }
 
   // Load more
-  const handleLoadMore = () => {
+  const handleLoadMore = async () => {
     setIsLoadingMore(true);
-    fetchHistory(offset + limit, true);
+    try {
+      const newOffset = offset + limit;
+      const response = await fetch(
+        `/api/history?limit=${limit}&offset=${newOffset}`
+      );
+      if (!response.ok) throw new Error("Failed to fetch more");
+      const moreData: HistoryResponse = await response.json();
+      setAdditionalCalls((prev) => [...prev, ...moreData.calls]);
+      setOffset(newOffset);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setIsLoadingMore(false);
+    }
   };
 
   // Delete call
@@ -175,8 +148,9 @@ export default function HistoryPage() {
         throw new Error("Failed to delete call");
       }
 
-      // Remove from local state
-      setCalls((prev) => prev.filter((c) => c.callId !== callId));
+      // Remove from local state and additional calls, then revalidate
+      setAdditionalCalls((prev) => prev.filter((c) => c.callId !== callId));
+      mutate();
     } catch (err) {
       alert(err instanceof Error ? err.message : "Failed to delete call");
     } finally {
@@ -214,7 +188,9 @@ export default function HistoryPage() {
 
   // Manual refresh
   const handleRefresh = () => {
-    fetchHistory(0, false);
+    setAdditionalCalls([]);
+    setOffset(0);
+    mutate();
   };
 
   // Loading state
@@ -234,7 +210,7 @@ export default function HistoryPage() {
           <div className="flex items-center gap-3">
             <History className="w-8 h-8 text-blue-500" />
             <h1 className="text-2xl font-bold text-white">Call History</h1>
-            {isPolling && (
+            {needsPolling && (
               <span className="flex items-center gap-1 text-xs text-green-400 bg-green-400/10 px-2 py-1 rounded-full">
                 <span className="w-2 h-2 bg-green-400 rounded-full animate-pulse" />
                 Live
