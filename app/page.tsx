@@ -41,7 +41,7 @@ export default function Home() {
   }
 
   return (
-    <main className="relative">
+    <main className="relative min-h-screen bg-linear-to-br from-gray-900 via-gray-800 to-gray-900">
       {/* User info and logout button */}
       <div className="absolute top-4 right-4 z-50 flex items-center gap-4">
         <div className="flex items-center gap-2 bg-gray-800 px-4 py-2 rounded-lg">
@@ -65,12 +65,15 @@ export default function Home() {
         </button>
       </div>
 
-      <VideoCall
-        socketUrl={
-          process.env.NEXT_PUBLIC_SOCKET_URL || "http://localhost:3001"
-        }
-        userName={session.user?.name || "User"}
-      />
+      {/* Add top padding to prevent overlap with absolute positioned header */}
+      <div className="pt-16">
+        <VideoCall
+          socketUrl={
+            process.env.NEXT_PUBLIC_SOCKET_URL || "http://localhost:3001"
+          }
+          userName={session.user?.name || "User"}
+        />
+      </div>
     </main>
   );
 }
