@@ -1,6 +1,16 @@
 "use client";
 
-import { useCallback, useRef } from "react";
+import { useCallback, useRef, useState } from "react";
+import useSWRMutation from "swr/mutation";
+import { postFetcher, patchFetcher } from "@/lib/fetcher";
+
+interface CreateCallResponse {
+  callId: string;
+}
+
+interface JoinCallResponse {
+  callId: string;
+}
 
 interface UseCallDatabaseReturn {
   currentCallId: string | null;
@@ -9,10 +19,21 @@ interface UseCallDatabaseReturn {
   endCallRecord: (callIdOverride?: string) => Promise<void>;
   setCurrentCallId: (callId: string | null) => void;
   getCurrentCallId: () => string | null;
+  isCreating: boolean;
+  isJoining: boolean;
+  isEnding: boolean;
 }
 
 export function useCallDatabase(): UseCallDatabaseReturn {
   const currentCallIdRef = useRef<string | null>(null);
+  const [isJoining, setIsJoining] = useState(false);
+  const [isEnding, setIsEnding] = useState(false);
+
+  // SWR mutation for creating a call
+  const { trigger: triggerCreate, isMutating: isCreating } = useSWRMutation(
+    "/api/calls",
+    postFetcher<CreateCallResponse>
+  );
 
   const setCurrentCallId = useCallback((callId: string | null) => {
     console.log("setCurrentCallId:", callId);
@@ -23,63 +44,52 @@ export function useCallDatabase(): UseCallDatabaseReturn {
     return currentCallIdRef.current;
   }, []);
 
+  // Join an existing call record
+  const joinCallRecord = useCallback(
+    async (callId: string): Promise<{ callId: string } | null> => {
+      setIsJoining(true);
+      try {
+        console.log("Joining call record:", callId);
+        const response = await postFetcher<JoinCallResponse>(
+          `/api/calls/${callId}/join`,
+          { arg: {} }
+        );
+
+        if (response) {
+          currentCallIdRef.current = callId;
+          console.log("Joined call record, storing callId:", callId);
+          return { callId };
+        }
+      } catch (error) {
+        console.error("Failed to join call record:", error);
+      } finally {
+        setIsJoining(false);
+      }
+      return null;
+    },
+    []
+  );
+
   // Create a call record in database
   const createCallRecord = useCallback(
     async (callId: string): Promise<{ callId: string } | null> => {
       try {
         console.log("Creating call record:", callId);
-        const response = await fetch("/api/calls", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ callId }),
-        });
-
-        if (response.ok) {
-          await response.json(); // Consume the response
-          currentCallIdRef.current = callId; // Use the passed callId, not data.callId (which is internal DB id)
-          console.log("Call record created, storing callId:", callId);
-          return { callId };
-        } else if (response.status === 409) {
-          // Call already exists, try to join
+        await triggerCreate({ callId });
+        currentCallIdRef.current = callId;
+        console.log("Call record created, storing callId:", callId);
+        return { callId };
+      } catch (error) {
+        // Check if call already exists (409 conflict)
+        if (error instanceof Error && error.message.includes("409")) {
           console.log("Call exists, joining...");
           return await joinCallRecord(callId);
-        } else {
-          const error = await response.json();
-          console.error("Failed to create call:", error);
         }
-      } catch (error) {
         console.error("Failed to create call record:", error);
+        return null;
       }
-      return null;
     },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    []
-  );
-
-  // Join an existing call record
-  const joinCallRecord = useCallback(
-    async (callId: string): Promise<{ callId: string } | null> => {
-      try {
-        console.log("Joining call record:", callId);
-        const response = await fetch(`/api/calls/${callId}/join`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-        });
-
-        if (response.ok) {
-          currentCallIdRef.current = callId;
-          console.log("Joined call record, storing callId:", callId);
-          return { callId };
-        } else {
-          const error = await response.json();
-          console.error("Failed to join call:", error);
-        }
-      } catch (error) {
-        console.error("Failed to join call record:", error);
-      }
-      return null;
-    },
-    []
+    [triggerCreate, joinCallRecord]
   );
 
   // End call in database
@@ -89,21 +99,16 @@ export function useCallDatabase(): UseCallDatabaseReturn {
       console.log("endCallRecord called, callId:", callIdToUse);
 
       if (callIdToUse) {
+        setIsEnding(true);
         try {
-          const response = await fetch(`/api/calls/${callIdToUse}`, {
-            method: "PATCH",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ endCall: true }),
+          await patchFetcher(`/api/calls/${callIdToUse}`, {
+            arg: { endCall: true },
           });
-
-          if (response.ok) {
-            console.log("Call ended in database:", callIdToUse);
-          } else {
-            const error = await response.json();
-            console.error("Failed to end call:", error);
-          }
+          console.log("Call ended in database:", callIdToUse);
         } catch (error) {
           console.error("Failed to end call in database:", error);
+        } finally {
+          setIsEnding(false);
         }
 
         if (!callIdOverride) {
@@ -123,5 +128,8 @@ export function useCallDatabase(): UseCallDatabaseReturn {
     endCallRecord,
     setCurrentCallId,
     getCurrentCallId,
+    isCreating,
+    isJoining,
+    isEnding,
   };
 }

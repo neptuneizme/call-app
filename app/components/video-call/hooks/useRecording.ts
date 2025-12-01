@@ -1,6 +1,17 @@
 "use client";
 
 import { useCallback, useRef, useState } from "react";
+import { postFetcher } from "@/lib/fetcher";
+
+interface PresignResponse {
+  presignedUrl: string;
+  s3Key: string;
+}
+
+interface ConfirmUploadResponse {
+  success: boolean;
+  audioUploadId: string;
+}
 
 interface UseRecordingReturn {
   isRecording: boolean;
@@ -137,26 +148,21 @@ export function useRecording(): UseRecordingReturn {
           : 0;
 
         console.log("Step 1: Getting presigned URL...");
-        // Step 1: Get presigned URL
-        const presignResponse = await fetch(`/api/calls/${callId}/presign`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            contentType: "audio/webm",
-            fileExtension: "webm",
-          }),
-        });
+        // Step 1: Get presigned URL using SWR fetcher
+        const presignData = await postFetcher<PresignResponse>(
+          `/api/calls/${callId}/presign`,
+          {
+            arg: {
+              contentType: "audio/webm",
+              fileExtension: "webm",
+            },
+          }
+        );
 
-        if (!presignResponse.ok) {
-          const error = await presignResponse.json();
-          console.error("Presign failed:", error);
-          throw new Error(error.error || "Failed to get upload URL");
-        }
-
-        const { presignedUrl, s3Key } = await presignResponse.json();
+        const { presignedUrl, s3Key } = presignData;
         console.log("Step 2: Uploading to S3...", s3Key);
 
-        // Step 2: Upload directly to S3
+        // Step 2: Upload directly to S3 (external URL, use native fetch)
         const uploadResponse = await fetch(presignedUrl, {
           method: "PUT",
           headers: {
@@ -172,28 +178,19 @@ export function useRecording(): UseRecordingReturn {
 
         console.log("Step 3: Confirming upload in database...");
 
-        // Step 3: Confirm upload in database
-        const confirmResponse = await fetch(
+        // Step 3: Confirm upload in database using SWR fetcher
+        const confirmData = await postFetcher<ConfirmUploadResponse>(
           `/api/calls/${callId}/confirm-upload`,
           {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
+            arg: {
               s3Key,
               fileSize: audioBlob.size,
               durationSeconds,
               mimeType: "audio/webm",
-            }),
+            },
           }
         );
 
-        if (!confirmResponse.ok) {
-          const error = await confirmResponse.json();
-          console.error("Confirm upload failed:", error);
-          throw new Error(error.error || "Failed to confirm upload");
-        }
-
-        const confirmData = await confirmResponse.json();
         console.log("Upload confirmed successfully:", confirmData);
 
         // Clear the recording blob after successful upload

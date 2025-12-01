@@ -1,115 +1,34 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useEffect } from "react";
 import { useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import { Phone, RefreshCw, History, Loader2, AlertCircle } from "lucide-react";
 import CallHistoryCard from "@/app/components/CallHistoryCard";
-import useSWR from "swr";
-
-interface Participant {
-  id: string;
-  name: string | null;
-  email: string | null;
-  image: string | null;
-  role: string;
-  joinedAt: string;
-  leftAt: string | null;
-}
-
-interface AudioUpload {
-  id: string;
-  oderId: string;
-  status: string;
-  uploadedAt: string;
-  fileSize: number;
-  durationSeconds: number | null;
-}
-
-interface Summary {
-  id: string;
-  preview: string;
-  keyPoints: unknown;
-  generatedAt: string;
-}
-
-interface Call {
-  id: string;
-  callId: string;
-  status: string;
-  startedAt: string;
-  endedAt: string | null;
-  duration: number | null;
-  participants: Participant[];
-  audioUploads: AudioUpload[];
-  summary: Summary | null;
-}
-
-interface HistoryResponse {
-  calls: Call[];
-  total: number;
-  limit: number;
-  offset: number;
-  hasMore: boolean;
-}
-
-// SWR fetcher
-const fetcher = (url: string) =>
-  fetch(url).then((res) => {
-    if (!res.ok) throw new Error("Failed to fetch history");
-    return res.json();
-  });
-
-// Polling interval in milliseconds
-const POLLING_INTERVAL = 5000; // 5 seconds
+import { useCallHistory } from "@/lib/hooks/useCallHistory";
 
 export default function HistoryPage() {
   const { data: session, status } = useSession();
   const router = useRouter();
 
-  const [additionalCalls, setAdditionalCalls] = useState<Call[]>([]);
-  const [offset, setOffset] = useState(0);
-  const [isLoadingMore, setIsLoadingMore] = useState(false);
-  const [deletingCallId, setDeletingCallId] = useState<string | null>(null);
-
-  const limit = 20;
-
-  // Use SWR for data fetching
-  const { data, error, isLoading, mutate } = useSWR<HistoryResponse>(
-    status === "authenticated" ? `/api/history?limit=${limit}&offset=0` : null,
-    fetcher,
-    {
-      revalidateOnFocus: true,
-      revalidateOnReconnect: true,
-    }
-  );
-
-  // Combine initial data with additional loaded calls
-  const calls = data ? [...data.calls, ...additionalCalls] : [];
-  const hasMore = data?.hasMore ?? false;
-
-  // Check if any calls need polling (processing status)
-  const needsPolling = calls.some(
-    (call) =>
-      call.status === "IN_PROGRESS" ||
-      call.status === "AWAITING_UPLOADS" ||
-      call.status === "PROCESSING"
-  );
-
-  // Use SWR's built-in refresh interval for polling
-  useSWR<HistoryResponse>(
-    status === "authenticated" && needsPolling
-      ? `/api/history?limit=${limit}&offset=0`
-      : null,
-    fetcher,
-    {
-      refreshInterval: POLLING_INTERVAL,
-      onSuccess: (newData) => {
-        // Update the main cache
-        mutate(newData, false);
-      },
-    }
-  );
+  // Use custom SWR hook for call history
+  const {
+    calls,
+    isLoading,
+    error,
+    hasMore,
+    isLoadingMore,
+    deletingCallId,
+    needsPolling,
+    loadMore,
+    deleteCall,
+    refresh,
+    downloadAudio,
+  } = useCallHistory({
+    enabled: status === "authenticated",
+    limit: 20,
+    pollingInterval: 5000,
+  });
 
   // Redirect unauthenticated users
   useEffect(() => {
@@ -118,81 +37,22 @@ export default function HistoryPage() {
     }
   }, [status, router]);
 
-  // Load more
-  const handleLoadMore = async () => {
-    setIsLoadingMore(true);
-    try {
-      const newOffset = offset + limit;
-      const response = await fetch(
-        `/api/history?limit=${limit}&offset=${newOffset}`
-      );
-      if (!response.ok) throw new Error("Failed to fetch more");
-      const moreData: HistoryResponse = await response.json();
-      setAdditionalCalls((prev) => [...prev, ...moreData.calls]);
-      setOffset(newOffset);
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setIsLoadingMore(false);
-    }
-  };
-
-  // Delete call
+  // Handle delete with error alert
   const handleDelete = async (callId: string) => {
     try {
-      setDeletingCallId(callId);
-
-      const response = await fetch(`/api/calls/${callId}`, {
-        method: "DELETE",
-      });
-
-      if (!response.ok) {
-        throw new Error("Failed to delete call");
-      }
-
-      // Remove from local state and additional calls, then revalidate
-      setAdditionalCalls((prev) => prev.filter((c) => c.callId !== callId));
-      mutate();
+      await deleteCall(callId);
     } catch (err) {
       alert(err instanceof Error ? err.message : "Failed to delete call");
-    } finally {
-      setDeletingCallId(null);
     }
   };
 
-  // Download audio
+  // Handle download with error alert
   const handleDownloadAudio = async (callId: string) => {
     try {
-      const response = await fetch(`/api/calls/${callId}/audio`);
-
-      if (!response.ok) {
-        throw new Error("Failed to get audio files");
-      }
-
-      const data = await response.json();
-
-      // Open download URLs in new tabs
-      data.audioFiles.forEach(
-        (file: { downloadUrl: string; userName: string }) => {
-          const link = document.createElement("a");
-          link.href = file.downloadUrl;
-          link.download = `${file.userName || "audio"}.webm`;
-          link.target = "_blank";
-          document.body.appendChild(link);
-          link.click();
-          document.body.removeChild(link);
-        }
-      );
+      await downloadAudio(callId);
     } catch (err) {
       alert(err instanceof Error ? err.message : "Failed to download audio");
     }
-  };
-
-  // Manual refresh
-  const handleRefresh = () => {
-    setAdditionalCalls([]);
-    setOffset(0);
-    mutate();
   };
 
   // Loading state
@@ -221,7 +81,7 @@ export default function HistoryPage() {
           </div>
           <div className="flex items-center gap-2">
             <button
-              onClick={handleRefresh}
+              onClick={refresh}
               disabled={isLoading}
               className="p-2 text-gray-400 hover:text-white hover:bg-gray-700 rounded-lg transition-colors disabled:opacity-50"
               title="Refresh"
@@ -244,9 +104,9 @@ export default function HistoryPage() {
         {error && (
           <div className="bg-red-500/10 border border-red-500/20 rounded-xl p-4 mb-6 flex items-center gap-3">
             <AlertCircle className="w-5 h-5 text-red-400" />
-            <span className="text-red-400">{error}</span>
+            <span className="text-red-400">{error.message}</span>
             <button
-              onClick={handleRefresh}
+              onClick={refresh}
               className="ml-auto text-sm text-red-400 hover:text-red-300 underline"
             >
               Try again
@@ -294,7 +154,7 @@ export default function HistoryPage() {
         {hasMore && (
           <div className="mt-6 text-center">
             <button
-              onClick={handleLoadMore}
+              onClick={loadMore}
               disabled={isLoadingMore}
               className="px-6 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg transition-colors disabled:opacity-50 inline-flex items-center gap-2"
             >
