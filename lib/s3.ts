@@ -86,6 +86,30 @@ export async function deleteFromS3(key: string): Promise<void> {
 }
 
 /**
+ * Download a file from S3 as a Buffer (server-side)
+ */
+export async function downloadFromS3(key: string): Promise<Buffer> {
+  const command = new GetObjectCommand({
+    Bucket: BUCKET_NAME,
+    Key: key,
+  });
+
+  const response = await s3Client.send(command);
+
+  if (!response.Body) {
+    throw new Error(`Failed to download file from S3: ${key}`);
+  }
+
+  // Convert stream to buffer
+  const chunks: Uint8Array[] = [];
+  for await (const chunk of response.Body as AsyncIterable<Uint8Array>) {
+    chunks.push(chunk);
+  }
+
+  return Buffer.concat(chunks);
+}
+
+/**
  * Generate a unique S3 key for audio uploads
  * Format: audio/{callId}/{oderId}/{timestamp}-{random}.webm
  */
