@@ -232,27 +232,16 @@ npm run lint
 
 ### Fetching Data with SWR
 
-Use SWR for client-side data fetching. It provides caching, revalidation, and optimistic updates. Use the shared fetchers from `@/lib/fetcher`.
+Use SWR for client-side data fetching. It provides caching, revalidation, and optimistic updates.
 
 ```typescript
 "use client";
 import useSWR from "swr";
-import { fetcher, postFetcher, deleteFetcher } from "@/lib/fetcher";
+
+const fetcher = (url: string) => fetch(url).then((res) => res.json());
 
 function MyComponent() {
-  // GET request
   const { data, error, isLoading, mutate } = useSWR("/api/endpoint", fetcher);
-
-  // For mutations, call fetchers directly
-  const handleCreate = async () => {
-    await postFetcher("/api/endpoint", { arg: { name: "value" } });
-    mutate(); // Revalidate cache
-  };
-
-  const handleDelete = async (id: string) => {
-    await deleteFetcher(`/api/endpoint/${id}`);
-    mutate(); // Revalidate cache
-  };
 
   if (isLoading) return <div>Loading...</div>;
   if (error) return <div>Error loading data</div>;
@@ -261,20 +250,12 @@ function MyComponent() {
 }
 ```
 
-**Available Fetchers in `lib/fetcher.ts`:**
-
-- `fetcher<T>(url)` - GET requests
-- `postFetcher<T>(url, { arg })` - POST requests
-- `patchFetcher<T>(url, { arg })` - PATCH requests
-- `deleteFetcher<T>(url)` - DELETE requests
-
 **SWR Best Practices:**
 
-- Use the shared fetchers from `@/lib/fetcher` for consistency
+- Define a shared `fetcher` function in `lib/fetcher.ts` for reuse
 - Use `mutate()` to revalidate data after mutations
-- Use `useSWRMutation` for mutations that need loading states
+- Use `useSWRMutation` for POST/PUT/DELETE operations
 - Pass options like `{ revalidateOnFocus: false }` when appropriate
-- Handle `FetchError` for typed error handling
 
 ### Adding a Database Model
 

@@ -82,6 +82,15 @@ export async function POST(request: NextRequest, context: RouteContext) {
       },
     });
 
+    // Update call startedAt to NOW when callee joins (actual call start time)
+    // This ensures the duration is calculated from when the call was actually connected
+    await prisma.call.update({
+      where: { id: call.id },
+      data: {
+        startedAt: new Date(),
+      },
+    });
+
     const updatedCall = await prisma.call.findUnique({
       where: { callId },
       include: {

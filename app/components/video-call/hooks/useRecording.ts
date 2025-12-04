@@ -21,6 +21,7 @@ interface UseRecordingReturn {
   startRecording: (stream: MediaStream) => void;
   stopRecording: () => Promise<Blob | null>;
   uploadRecording: (callId: string) => Promise<boolean>;
+  stopAndUpload: (callId: string) => Promise<boolean>;
 }
 
 export function useRecording(): UseRecordingReturn {
@@ -34,6 +35,7 @@ export function useRecording(): UseRecordingReturn {
   const recordingStartTimeRef = useRef<number | null>(null);
   const recordingBlobRef = useRef<Blob | null>(null);
   const durationIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const isRecordingRef = useRef(false); // Ref to track recording state for callbacks
 
   // Start recording audio from the stream
   const startRecording = useCallback((stream: MediaStream) => {
@@ -71,12 +73,14 @@ export function useRecording(): UseRecordingReturn {
       mediaRecorder.onerror = (event) => {
         console.error("MediaRecorder error:", event);
         setIsRecording(false);
+        isRecordingRef.current = false;
       };
 
       // Start recording - collect data every second
       mediaRecorder.start(1000);
       mediaRecorderRef.current = mediaRecorder;
       setIsRecording(true);
+      isRecordingRef.current = true;
       setRecordingDuration(0);
 
       // Update duration every second
@@ -113,6 +117,7 @@ export function useRecording(): UseRecordingReturn {
           });
           recordingBlobRef.current = audioBlob;
           setIsRecording(false);
+          isRecordingRef.current = false;
           console.log("Recording stopped, blob size:", audioBlob.size);
           resolve(audioBlob);
         };
@@ -120,6 +125,7 @@ export function useRecording(): UseRecordingReturn {
         mediaRecorderRef.current.stop();
       } else {
         setIsRecording(false);
+        isRecordingRef.current = false;
         resolve(recordingBlobRef.current);
       }
     });
@@ -211,6 +217,42 @@ export function useRecording(): UseRecordingReturn {
     []
   );
 
+  // Combined stop and upload - uses ref to check recording state (avoids stale closure)
+  const stopAndUpload = useCallback(
+    async (callId: string): Promise<boolean> => {
+      console.log(
+        "stopAndUpload called, callId:",
+        callId,
+        "isRecordingRef:",
+        isRecordingRef.current
+      );
+
+      // Use ref to check if recording (avoids stale state in callbacks)
+      if (!isRecordingRef.current && !recordingBlobRef.current) {
+        console.log("No recording to stop/upload");
+        return false;
+      }
+
+      // Stop recording first
+      if (isRecordingRef.current) {
+        console.log("Stopping recording...");
+        await stopRecording();
+      }
+
+      // Reset duration display
+      setRecordingDuration(0);
+
+      // Then upload
+      if (callId && recordingBlobRef.current) {
+        console.log("Uploading recording for call:", callId);
+        return await uploadRecording(callId);
+      }
+
+      return false;
+    },
+    [stopRecording, uploadRecording]
+  );
+
   return {
     isRecording,
     isUploading,
@@ -219,5 +261,6 @@ export function useRecording(): UseRecordingReturn {
     startRecording,
     stopRecording,
     uploadRecording,
+    stopAndUpload,
   };
 }

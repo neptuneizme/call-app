@@ -57,8 +57,7 @@ export function VideoCall({
     isUploading,
     recordingDuration,
     startRecording,
-    stopRecording,
-    uploadRecording,
+    stopAndUpload,
   } = useRecording();
 
   // Refs
@@ -83,24 +82,25 @@ export function VideoCall({
       isRecording
     );
 
-    // End call in database FIRST (sets to AWAITING_UPLOADS)
+    // IMPORTANT: Set callEnded to true and callAccepted to false FIRST
+    // This prevents the recording useEffect from restarting recording
+    // after stopAndUpload sets isRecording to false
+    setCallEnded(true);
+    setCallAccepted(false);
+
+    // Stop recording and upload (now safe since callAccepted is false)
+    // This ensures both caller and callee upload their audio
+    if (callIdToUse) {
+      console.log("Stopping and uploading recording for call:", callIdToUse);
+      await stopAndUpload(callIdToUse);
+    }
+
+    // End call in database AFTER upload (sets to AWAITING_UPLOADS if no more uploads pending)
     if (callIdToUse) {
       await endCallRecord(callIdToUse);
     }
 
-    // Stop recording and upload AFTER (confirm-upload will update status)
-    if (isRecording) {
-      console.log("Stopping recording...");
-      await stopRecording();
-      if (callIdToUse) {
-        console.log("Uploading recording for call:", callIdToUse);
-        await uploadRecording(callIdToUse);
-      }
-    }
-
-    // Reset states
-    setCallEnded(true);
-    setCallAccepted(false);
+    // Reset remaining states
     setIsCalling(false);
     setRemoteName("");
     setRemoteStream(null);
@@ -111,7 +111,7 @@ export function VideoCall({
       peerRef.current.destroy();
       peerRef.current = null;
     }
-  }, [isRecording, stopRecording, uploadRecording, endCallRecord]);
+  }, [isRecording, stopAndUpload, endCallRecord]);
 
   // Register callEnded handler
   useEffect(() => {
@@ -121,11 +121,12 @@ export function VideoCall({
   }, [onCallEnded, handleCallEnded]);
 
   // Start recording when call is accepted
+  // Only start if call is active (accepted AND not ended)
   useEffect(() => {
-    if (callAccepted && stream && !isRecording) {
+    if (callAccepted && !callEnded && stream && !isRecording) {
       startRecording(stream);
     }
-  }, [callAccepted, stream, isRecording, startRecording]);
+  }, [callAccepted, callEnded, stream, isRecording, startRecording]);
 
   // Call a user by their ID
   const callUser = useCallback(
@@ -160,6 +161,7 @@ export function VideoCall({
           signalData: data,
           from: socketId,
           name: userName,
+          callId: callRecordId, // Include callId so callee can join the call record
         });
       });
 

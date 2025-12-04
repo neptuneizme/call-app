@@ -28,6 +28,7 @@ interface UseSocketReturn {
     signalData: Peer.SignalData;
     from: string;
     name: string;
+    callId?: string;
   }) => void;
   emitAnswerCall: (data: { signal: Peer.SignalData; to: string }) => void;
   emitEndCall: (to: string) => void;
@@ -111,6 +112,7 @@ export function useSocket(socketUrl: string): UseSocketReturn {
       signalData: Peer.SignalData;
       from: string;
       name: string;
+      callId?: string;
     }) => {
       socketRef.current?.emit("callUser", data);
     },

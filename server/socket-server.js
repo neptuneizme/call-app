@@ -29,11 +29,14 @@ io.on("connection", (socket) => {
 
   // Handle call user event
   socket.on("callUser", (data) => {
-    console.log(`Call from ${data.from} to ${data.userToCall}`);
+    console.log(
+      `Call from ${data.from} to ${data.userToCall}, callId: ${data.callId}`
+    );
     io.to(data.userToCall).emit("callUser", {
       signal: data.signalData,
       from: data.from,
       name: data.name,
+      callId: data.callId, // Forward callId to callee
     });
   });
 
