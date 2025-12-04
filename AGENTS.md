@@ -158,17 +158,19 @@ npm run lint
 
 ## API Routes
 
-| Endpoint                             | Method | Purpose                     |
-| ------------------------------------ | ------ | --------------------------- |
-| `/api/auth/[...nextauth]`            | \*     | NextAuth handlers           |
-| `/api/calls`                         | POST   | Create new call             |
-| `/api/calls/[callId]`                | GET    | Get call details            |
-| `/api/calls/[callId]/join`           | POST   | Join existing call          |
-| `/api/calls/[callId]/audio`          | GET    | Get audio for call          |
-| `/api/calls/[callId]/presign`        | POST   | Get presigned S3 upload URL |
-| `/api/calls/[callId]/upload`         | POST   | Upload audio recording      |
-| `/api/calls/[callId]/confirm-upload` | POST   | Confirm upload completion   |
-| `/api/history`                       | GET    | Get user's call history     |
+| Endpoint                             | Method | Purpose                          |
+| ------------------------------------ | ------ | -------------------------------- |
+| `/api/auth/[...nextauth]`            | \*     | NextAuth handlers                |
+| `/api/calls`                         | POST   | Create new call                  |
+| `/api/calls/[callId]`                | GET    | Get call details                 |
+| `/api/calls/[callId]/join`           | POST   | Join existing call               |
+| `/api/calls/[callId]/audio`          | GET    | Get audio for call               |
+| `/api/calls/[callId]/presign`        | POST   | Get presigned S3 upload URL      |
+| `/api/calls/[callId]/upload`         | POST   | Upload audio recording           |
+| `/api/calls/[callId]/confirm-upload` | POST   | Confirm upload completion        |
+| `/api/calls/[callId]/process`        | POST   | Trigger AI transcription/summary |
+| `/api/calls/[callId]/process`        | GET    | Get processing status            |
+| `/api/history`                       | GET    | Get user's call history          |
 
 ---
 
