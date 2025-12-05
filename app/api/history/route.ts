@@ -103,7 +103,7 @@ export async function GET(request: NextRequest) {
         })),
         audioUploads: call.audioUploads.map((upload) => ({
           id: upload.id,
-          oderId: upload.userId,
+          userId: upload.userId,
           status: upload.status,
           uploadedAt: upload.uploadedAt,
           fileSize: upload.fileSize,

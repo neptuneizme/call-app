@@ -133,6 +133,28 @@ AWS_SECRET_ACCESS_KEY=<secret>
 AWS_S3_BUCKET_NAME=<bucket>
 ```
 
+### AWS S3 CORS Configuration
+
+Configure your S3 bucket with the following CORS policy to allow client-side uploads:
+
+```json
+{
+  "CORSRules": [
+    {
+      "AllowedHeaders": ["*"],
+      "AllowedMethods": ["GET", "PUT", "POST", "DELETE", "HEAD"],
+      "AllowedOrigins": [
+        "http://localhost:3000",
+        "http://localhost:3001",
+        "https://yourdomain.com"
+      ],
+      "ExposeHeaders": ["ETag"],
+      "MaxAgeSeconds": 3600
+    }
+  ]
+}
+```
+
 ---
 
 ## Development Commands

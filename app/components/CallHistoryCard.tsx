@@ -30,7 +30,7 @@ interface Participant {
 
 interface AudioUpload {
   id: string;
-  oderId: string;
+  userId: string;
   status: string;
   uploadedAt: string;
   fileSize: number;
@@ -111,8 +111,8 @@ export default function CallHistoryCard({
   const [isExpanded, setIsExpanded] = useState(false);
   const [showTranscript, setShowTranscript] = useState(false);
 
-  const getParticipantUploadStatus = (oderId: string) => {
-    return call.audioUploads.find((u) => u.oderId === oderId);
+  const getParticipantUploadStatus = (userId: string) => {
+    return call.audioUploads.find((u) => u.userId === userId);
   };
 
   return (
@@ -266,7 +266,7 @@ export default function CallHistoryCard({
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                 {call.audioUploads.map((upload) => {
                   const participant = call.participants.find(
-                    (p) => p.id === upload.oderId
+                    (p) => p.id === upload.userId
                   );
                   return (
                     <div
