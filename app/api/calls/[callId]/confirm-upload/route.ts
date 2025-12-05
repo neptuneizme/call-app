@@ -93,12 +93,18 @@ export async function POST(request: NextRequest, context: RouteContext) {
     const allParticipantsUploaded =
       allUploads.length >= call.participants.length;
 
+    console.log(
+      `[ConfirmUpload] allParticipantsUploaded: ${allParticipantsUploaded}`
+    );
+
     // Update call status if all uploads received
     if (allParticipantsUploaded) {
+      console.log(`[ConfirmUpload] Updating call status to PROCESSING...`);
       await prisma.call.update({
         where: { id: call.id },
         data: { status: "PROCESSING" },
       });
+      console.log(`[ConfirmUpload] Call status updated to PROCESSING`);
 
       // Auto-trigger AI processing in background
       // We don't await this to return response quickly

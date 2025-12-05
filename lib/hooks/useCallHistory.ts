@@ -26,7 +26,7 @@ interface AudioUpload {
 interface Summary {
   id: string;
   preview: string;
-  keyPoints: unknown;
+  transcript: string | null;
   generatedAt: string;
 }
 

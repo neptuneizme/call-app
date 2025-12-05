@@ -66,6 +66,7 @@ export async function GET(request: NextRequest) {
           select: {
             id: true,
             summary: true,
+            mergedTranscript: true,
             generatedAt: true,
           },
         },
@@ -111,9 +112,11 @@ export async function GET(request: NextRequest) {
         summary: call.summary
           ? {
               id: call.summary.id,
-              preview:
-                call.summary.summary.substring(0, 200) +
-                (call.summary.summary.length > 200 ? "..." : ""),
+              preview: call.summary.summary
+                ? call.summary.summary.substring(0, 200) +
+                  (call.summary.summary.length > 200 ? "..." : "")
+                : "Bản ghi đã sẵn sàng",
+              transcript: call.summary.mergedTranscript,
               generatedAt: call.summary.generatedAt,
             }
           : null,

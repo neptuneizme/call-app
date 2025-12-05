@@ -1,9 +1,14 @@
 import { createClient, DeepgramClient } from "@deepgram/sdk";
 
 // Initialize Deepgram client
-const deepgramClient: DeepgramClient = createClient(
-  process.env.DEEPGRAM_API_KEY || ""
+const apiKey = process.env.DEEPGRAM_API_KEY || "";
+console.log(
+  `[Deepgram] Initializing with API key: ${
+    apiKey ? apiKey.substring(0, 8) + "..." : "MISSING!"
+  }`
 );
+
+const deepgramClient: DeepgramClient = createClient(apiKey);
 
 // ============================================
 // Types
@@ -20,9 +25,7 @@ export interface DeepgramSegment {
 export interface DeepgramTranscriptionResult {
   transcript: string; // Full merged transcript with speaker labels
   segments: DeepgramSegment[]; // Individual segments with timestamps
-  summary: string; // Deepgram's generated summary
   duration: number; // Audio duration in seconds
-  language: string; // Detected language
 }
 
 // ============================================
@@ -50,15 +53,14 @@ export async function transcribeMultichannel(
 
   const { result, error } =
     await deepgramClient.listen.prerecorded.transcribeFile(audioBuffer, {
-      model: "nova-2",
+      model: "nova-3",
+      language: "vi", // Vietnamese only
       smart_format: true,
       punctuate: true,
       paragraphs: true,
       utterances: true,
       multichannel: true,
       channels: 2,
-      summarize: "v2", // Enable Deepgram summarization
-      detect_language: true,
     });
 
   if (error) {
@@ -69,6 +71,19 @@ export async function transcribeMultichannel(
   if (!result?.results?.channels) {
     throw new Error("No transcription results from Deepgram");
   }
+
+  console.log(
+    `[Deepgram] Raw response channels: ${result.results.channels.length}`
+  );
+  result.results.channels.forEach((ch, idx) => {
+    const alt = ch.alternatives?.[0];
+    console.log(`[Deepgram] Channel ${idx}:`, {
+      hasAlternatives: !!alt,
+      transcript: alt?.transcript?.substring(0, 100) || "(empty)",
+      wordCount: alt?.words?.length || 0,
+      hasParagraphs: !!alt?.paragraphs?.paragraphs?.length,
+    });
+  });
 
   // Map channel index to speaker name
   const speakerNames: Record<number, string> = {
@@ -135,38 +150,39 @@ export async function transcribeMultichannel(
   segments.sort((a, b) => a.start - b.start);
 
   // Build formatted transcript with speaker labels
-  const transcript = segments
+  let transcript = segments
     .map((seg) => {
       const timestamp = formatTimestamp(seg.start);
       return `[${timestamp}] ${seg.speaker}: ${seg.text}`;
     })
     .join("\n\n");
 
-  // Extract summary from Deepgram response
-  const summary =
-    result.results.summary?.short ||
-    result.results.summary?.result ||
-    "No summary available.";
+  // Fallback: if no segments but alternatives have transcript, use that
+  if (!transcript && result.results.channels.length > 0) {
+    console.log(`[Deepgram] No segments found, using raw transcript fallback`);
+    const fallbackParts: string[] = [];
+    result.results.channels.forEach((channel, idx) => {
+      const rawTranscript = channel.alternatives?.[0]?.transcript;
+      if (rawTranscript) {
+        const speaker = speakerNames[idx] || `Speaker ${idx}`;
+        fallbackParts.push(`${speaker}: ${rawTranscript}`);
+      }
+    });
+    transcript = fallbackParts.join("\n\n");
+  }
 
   // Get metadata
   const duration = result.metadata?.duration || 0;
-  const language =
-    result.results.channels[0]?.detected_language ||
-    result.results.channels[0]?.alternatives?.[0]?.languages?.[0] ||
-    "en";
 
   console.log(`[Deepgram] Transcription complete:`);
   console.log(`  - Duration: ${duration}s`);
-  console.log(`  - Language: ${language}`);
+  console.log(`  - Language: vi (Vietnamese)`);
   console.log(`  - Segments: ${segments.length}`);
-  console.log(`  - Summary length: ${summary.length} chars`);
 
   return {
     transcript,
     segments,
-    summary,
     duration,
-    language,
   };
 }
 

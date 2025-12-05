@@ -19,7 +19,6 @@ export interface ProcessingResult {
   error?: string;
   summary?: {
     id: string;
-    summary: string;
     transcript: string;
   };
 }
@@ -29,11 +28,13 @@ export interface ProcessingResult {
 // ============================================
 
 /**
- * Process a call: merge audio files, transcribe with Deepgram multichannel, and get summary
- * Uses Deepgram's Nova-2 model with multichannel support and built-in summarization
+ * Process a call: merge audio files, transcribe with Deepgram multichannel
+ * Uses Deepgram's Nova-3 model with multichannel support for Vietnamese transcription
  */
 export async function processCall(callId: string): Promise<ProcessingResult> {
+  console.log(`[ProcessCall] ========================================`);
   console.log(`[ProcessCall] Starting processing for call: ${callId}`);
+  console.log(`[ProcessCall] Timestamp: ${new Date().toISOString()}`);
 
   try {
     // Step 1: Get call with audio uploads
@@ -175,21 +176,18 @@ export async function processCall(callId: string): Promise<ProcessingResult> {
     );
 
     console.log(
-      `[ProcessCall] Transcription complete. Summary: ${transcriptionResult.summary.substring(
-        0,
-        100
-      )}...`
+      `[ProcessCall] Transcription complete. Duration: ${transcriptionResult.duration}s`
     );
 
-    // Step 7: Save CallSummary to database
+    // Step 7: Save CallSummary to database (summary will be generated later with GPT)
     const callSummary = await prisma.callSummary.create({
       data: {
         callId: call.id,
         mergedTranscript: transcriptionResult.transcript,
-        summary: transcriptionResult.summary,
-        language: transcriptionResult.language,
+        summary: null, // Will be filled later by GPT-5-mini
+        language: "vi",
         durationSeconds: transcriptionResult.duration,
-        modelUsed: "deepgram-nova-2",
+        modelUsed: "deepgram-nova-3",
       },
     });
 
@@ -226,7 +224,6 @@ export async function processCall(callId: string): Promise<ProcessingResult> {
       callId,
       summary: {
         id: callSummary.id,
-        summary: transcriptionResult.summary,
         transcript: transcriptionResult.transcript,
       },
     };

@@ -159,12 +159,12 @@ model CallSummary {
 
   // Transcription data from Deepgram
   mergedTranscript String  @db.Text // Chronological merged script with speaker labels
-  summary          String  @db.Text // Deepgram generated summary
-  language         String? // Detected language
+  summary          String? @db.Text // GPT generated summary (optional, filled later)
+  language         String? // Transcription language
   durationSeconds  Float?  // Total audio duration
 
   // Metadata
-  modelUsed String @default("deepgram-nova-2")
+  modelUsed String @default("deepgram-nova-3")
 
   // Relations
   call Call @relation(fields: [callId], references: [id], onDelete: Cascade)

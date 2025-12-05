@@ -12,9 +12,11 @@ import {
   CheckCircle,
   XCircle,
   Loader2,
+  FileText,
 } from "lucide-react";
 import StatusBadge from "./StatusBadge";
 import ParticipantAvatars from "./ParticipantAvatars";
+import TranscriptModal from "./TranscriptModal";
 
 interface Participant {
   id: string;
@@ -38,6 +40,7 @@ interface AudioUpload {
 interface Summary {
   id: string;
   preview: string;
+  transcript: string | null;
   generatedAt: string;
 }
 
@@ -106,6 +109,7 @@ export default function CallHistoryCard({
   isDeleting = false,
 }: CallHistoryCardProps) {
   const [isExpanded, setIsExpanded] = useState(false);
+  const [showTranscript, setShowTranscript] = useState(false);
 
   const getParticipantUploadStatus = (oderId: string) => {
     return call.audioUploads.find((u) => u.oderId === oderId);
@@ -298,9 +302,22 @@ export default function CallHistoryCard({
           {/* Summary Preview */}
           {call.summary && (
             <div className="mt-4">
-              <h4 className="text-sm font-medium text-gray-300 mb-2">
-                Summary
-              </h4>
+              <div className="flex items-center justify-between mb-2">
+                <h4 className="text-sm font-medium text-gray-300">Summary</h4>
+                {call.summary.transcript ? (
+                  <button
+                    onClick={() => setShowTranscript(true)}
+                    className="flex items-center gap-1 text-xs text-blue-400 hover:text-blue-300 transition-colors"
+                  >
+                    <FileText className="w-3 h-3" />
+                    Xem bản ghi
+                  </button>
+                ) : (
+                  <span className="text-xs text-gray-500">
+                    Không có bản ghi
+                  </span>
+                )}
+              </div>
               <div className="bg-gray-700/50 rounded-lg p-3">
                 <p className="text-gray-300 text-sm">{call.summary.preview}</p>
                 <p className="text-xs text-gray-500 mt-2">
@@ -310,6 +327,15 @@ export default function CallHistoryCard({
             </div>
           )}
         </div>
+      )}
+
+      {/* Transcript Modal */}
+      {showTranscript && call.summary?.transcript && (
+        <TranscriptModal
+          transcript={call.summary.transcript}
+          callId={call.callId}
+          onClose={() => setShowTranscript(false)}
+        />
       )}
     </div>
   );
