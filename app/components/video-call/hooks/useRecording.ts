@@ -36,10 +36,16 @@ export function useRecording(): UseRecordingReturn {
   const recordingBlobRef = useRef<Blob | null>(null);
   const durationIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const isRecordingRef = useRef(false); // Ref to track recording state for callbacks
+  const isUploadingRef = useRef(false); // Ref to prevent duplicate uploads
+  const hasUploadedRef = useRef(false); // Ref to track if upload already completed
 
   // Start recording audio from the stream
   const startRecording = useCallback((stream: MediaStream) => {
     try {
+      // Reset upload flags for new recording session
+      hasUploadedRef.current = false;
+      isUploadingRef.current = false;
+
       // Get only audio tracks for recording
       const audioStream = new MediaStream(stream.getAudioTracks());
 
@@ -134,6 +140,17 @@ export function useRecording(): UseRecordingReturn {
   // Upload the recording to S3
   const uploadRecording = useCallback(
     async (callId: string): Promise<boolean> => {
+      // Guard: Prevent duplicate uploads
+      if (isUploadingRef.current) {
+        console.log("Upload already in progress, skipping...");
+        return false;
+      }
+
+      if (hasUploadedRef.current) {
+        console.log("Already uploaded for this session, skipping...");
+        return false;
+      }
+
       const audioBlob = recordingBlobRef.current;
 
       console.log("uploadRecording called with callId:", callId);
@@ -144,6 +161,8 @@ export function useRecording(): UseRecordingReturn {
         return false;
       }
 
+      // Set uploading guards
+      isUploadingRef.current = true;
       setIsUploading(true);
       setUploadError(null);
 
@@ -154,6 +173,9 @@ export function useRecording(): UseRecordingReturn {
           : 0;
 
         console.log("Step 1: Getting presigned URL...");
+        console.log("  - callId:", callId);
+        console.log("  - blob size:", audioBlob.size, "bytes");
+
         // Step 1: Get presigned URL using SWR fetcher
         const presignData = await postFetcher<PresignResponse>(
           `/api/calls/${callId}/presign`,
@@ -166,7 +188,9 @@ export function useRecording(): UseRecordingReturn {
         );
 
         const { presignedUrl, s3Key } = presignData;
-        console.log("Step 2: Uploading to S3...", s3Key);
+        console.log("Step 2: Uploading to S3...");
+        console.log("  - s3Key:", s3Key);
+        console.log("  - presignedUrl length:", presignedUrl?.length);
 
         // Step 2: Upload directly to S3 (external URL, use native fetch)
         const uploadResponse = await fetch(presignedUrl, {
@@ -177,12 +201,18 @@ export function useRecording(): UseRecordingReturn {
           body: audioBlob,
         });
 
+        console.log("  - S3 upload response status:", uploadResponse.status);
+
         if (!uploadResponse.ok) {
-          console.error("S3 upload failed:", uploadResponse.status);
-          throw new Error("Failed to upload to S3");
+          const errorText = await uploadResponse.text().catch(() => "");
+          console.error("S3 upload failed:", uploadResponse.status, errorText);
+          throw new Error(`Failed to upload to S3: ${uploadResponse.status}`);
         }
 
         console.log("Step 3: Confirming upload in database...");
+        console.log("  - s3Key:", s3Key);
+        console.log("  - fileSize:", audioBlob.size);
+        console.log("  - durationSeconds:", durationSeconds);
 
         // Step 3: Confirm upload in database using SWR fetcher
         const confirmData = await postFetcher<ConfirmUploadResponse>(
@@ -203,6 +233,9 @@ export function useRecording(): UseRecordingReturn {
         recordingBlobRef.current = null;
         audioChunksRef.current = [];
 
+        // Mark as uploaded to prevent future attempts
+        hasUploadedRef.current = true;
+        isUploadingRef.current = false;
         setIsUploading(false);
         return true;
       } catch (error) {
@@ -210,6 +243,7 @@ export function useRecording(): UseRecordingReturn {
         setUploadError(
           error instanceof Error ? error.message : "Upload failed"
         );
+        isUploadingRef.current = false;
         setIsUploading(false);
         return false;
       }

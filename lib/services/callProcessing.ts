@@ -102,6 +102,16 @@ export async function processCall(callId: string): Promise<ProcessingResult> {
       `[ProcessCall] Found ${call.audioUploads.length} audio uploads`
     );
 
+    // Log details of each upload for debugging
+    call.audioUploads.forEach((upload, index) => {
+      console.log(`[ProcessCall] Upload ${index + 1}:`, {
+        id: upload.id,
+        userId: upload.userId,
+        userName: upload.user.name,
+        filePath: upload.filePath,
+      });
+    });
+
     // Step 3: Transcribe each audio file
     const transcriptionResults = await transcribeAllAudioFiles(
       call.audioUploads
@@ -204,6 +214,11 @@ async function transcribeAllAudioFiles(
 
   for (const upload of audioUploads) {
     console.log(`[Transcribe] Processing audio: ${upload.filePath}`);
+    console.log(
+      `[Transcribe] Upload ID: ${upload.id}, User: ${
+        upload.user.name || upload.userId
+      }`
+    );
 
     // Update status to PROCESSING
     await prisma.audioUpload.update({
@@ -213,12 +228,21 @@ async function transcribeAllAudioFiles(
 
     try {
       // Download audio from S3
+      console.log(`[Transcribe] Downloading from S3: ${upload.filePath}`);
       const audioBuffer = await downloadFromS3(upload.filePath);
       console.log(
         `[Transcribe] Downloaded ${audioBuffer.length} bytes from S3`
       );
 
+      // Validate audio buffer
+      if (audioBuffer.length === 0) {
+        throw new Error(
+          `Empty audio file downloaded from S3: ${upload.filePath}`
+        );
+      }
+
       // Transcribe with Whisper
+      console.log(`[Transcribe] Starting Whisper transcription...`);
       const transcription = await transcribeAudio(
         audioBuffer,
         `${upload.id}.webm`
@@ -251,6 +275,13 @@ async function transcribeAllAudioFiles(
       results.push({ uploadId: upload.id, transcription });
     } catch (error) {
       console.error(`[Transcribe] Error transcribing ${upload.id}:`, error);
+      console.error(`[Transcribe] Error details:`, {
+        uploadId: upload.id,
+        filePath: upload.filePath,
+        userId: upload.userId,
+        errorMessage: error instanceof Error ? error.message : String(error),
+        errorStack: error instanceof Error ? error.stack : undefined,
+      });
 
       // Update upload status to FAILED
       await prisma.audioUpload.update({

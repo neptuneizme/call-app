@@ -89,24 +89,40 @@ export async function deleteFromS3(key: string): Promise<void> {
  * Download a file from S3 as a Buffer (server-side)
  */
 export async function downloadFromS3(key: string): Promise<Buffer> {
+  console.log(`[S3] Downloading file: ${key}`);
+
   const command = new GetObjectCommand({
     Bucket: BUCKET_NAME,
     Key: key,
   });
 
-  const response = await s3Client.send(command);
+  try {
+    const response = await s3Client.send(command);
 
-  if (!response.Body) {
-    throw new Error(`Failed to download file from S3: ${key}`);
+    if (!response.Body) {
+      throw new Error(
+        `Failed to download file from S3: ${key} - No body in response`
+      );
+    }
+
+    // Convert stream to buffer
+    const chunks: Uint8Array[] = [];
+    for await (const chunk of response.Body as AsyncIterable<Uint8Array>) {
+      chunks.push(chunk);
+    }
+
+    const buffer = Buffer.concat(chunks);
+    console.log(`[S3] Downloaded ${buffer.length} bytes for key: ${key}`);
+
+    return buffer;
+  } catch (error) {
+    console.error(`[S3] Error downloading file ${key}:`, error);
+    throw new Error(
+      `Failed to download from S3: ${key} - ${
+        error instanceof Error ? error.message : String(error)
+      }`
+    );
   }
-
-  // Convert stream to buffer
-  const chunks: Uint8Array[] = [];
-  for await (const chunk of response.Body as AsyncIterable<Uint8Array>) {
-    chunks.push(chunk);
-  }
-
-  return Buffer.concat(chunks);
 }
 
 /**

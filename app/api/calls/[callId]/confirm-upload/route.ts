@@ -58,7 +58,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
       );
     }
 
-    // Create audio upload record
+    // Create audio upload record with UPLOADED status (file is in S3)
     const audioUpload = await prisma.audioUpload.create({
       data: {
         callId: call.id,
@@ -67,13 +67,27 @@ export async function POST(request: NextRequest, context: RouteContext) {
         fileSize: fileSize || 0,
         durationSeconds: durationSeconds || null,
         mimeType: mimeType || "audio/webm",
-        status: "PENDING",
+        status: "PENDING", // Will be set to PROCESSING when transcription starts
       },
     });
 
+    console.log(
+      `[ConfirmUpload] Created upload record for user ${session.user.id}, callId: ${callId}, s3Key: ${s3Key}`
+    );
+
     // Check if both participants have uploaded
+    // Use a fresh query to avoid race conditions
     const allUploads = await prisma.audioUpload.findMany({
       where: { callId: call.id },
+    });
+
+    console.log(
+      `[ConfirmUpload] Total uploads for call ${callId}: ${allUploads.length}/${call.participants.length}`
+    );
+    allUploads.forEach((u) => {
+      console.log(
+        `  - Upload ${u.id}: user=${u.userId}, status=${u.status}, path=${u.filePath}`
+      );
     });
 
     const allParticipantsUploaded =
@@ -89,14 +103,19 @@ export async function POST(request: NextRequest, context: RouteContext) {
       // Auto-trigger AI processing in background
       // We don't await this to return response quickly
       // The processing runs asynchronously
-      console.log(`[ConfirmUpload] All uploads received for ${callId}, triggering processing...`);
-      
+      console.log(
+        `[ConfirmUpload] All uploads received for ${callId}, triggering processing...`
+      );
+
       processCall(callId)
         .then((result) => {
           if (result.success) {
             console.log(`[ConfirmUpload] Processing complete for ${callId}`);
           } else {
-            console.error(`[ConfirmUpload] Processing failed for ${callId}:`, result.error);
+            console.error(
+              `[ConfirmUpload] Processing failed for ${callId}:`,
+              result.error
+            );
           }
         })
         .catch((err) => {
