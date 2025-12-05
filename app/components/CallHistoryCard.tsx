@@ -38,7 +38,6 @@ interface AudioUpload {
 interface Summary {
   id: string;
   preview: string;
-  keyPoints: unknown;
   generatedAt: string;
 }
 

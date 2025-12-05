@@ -66,7 +66,6 @@ export async function GET(request: NextRequest) {
           select: {
             id: true,
             summary: true,
-            keyPoints: true,
             generatedAt: true,
           },
         },
@@ -115,7 +114,6 @@ export async function GET(request: NextRequest) {
               preview:
                 call.summary.summary.substring(0, 200) +
                 (call.summary.summary.length > 200 ? "..." : ""),
-              keyPoints: call.summary.keyPoints,
               generatedAt: call.summary.generatedAt,
             }
           : null,

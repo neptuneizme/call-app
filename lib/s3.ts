@@ -127,7 +127,7 @@ export async function downloadFromS3(key: string): Promise<Buffer> {
 
 /**
  * Generate a unique S3 key for audio uploads
- * Format: audio/{callId}/{oderId}/{timestamp}-{random}.webm
+ * Format: audio/{callId}/{userId}/{timestamp}-{random}.webm
  */
 export function generateAudioKey(
   callId: string,
@@ -137,6 +137,14 @@ export function generateAudioKey(
   const timestamp = Date.now();
   const random = Math.random().toString(36).substring(2, 8);
   return `audio/${callId}/${userId}/${timestamp}-${random}.${fileExtension}`;
+}
+
+/**
+ * Generate S3 key for merged stereo audio file
+ * Format: audio/{callId}/merged.wav
+ */
+export function generateMergedAudioKey(callId: string): string {
+  return `audio/${callId}/merged.wav`;
 }
 
 export { s3Client, BUCKET_NAME };

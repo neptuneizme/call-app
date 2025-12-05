@@ -1,12 +1,12 @@
 import prisma from "@/lib/db";
-import { downloadFromS3 } from "@/lib/s3";
 import {
-  transcribeAudio,
-  mergeTranscripts,
-  formatMergedTranscript,
-  generateSummary,
-  TranscriptionResult,
-} from "@/lib/openai";
+  downloadFromS3,
+  uploadToS3,
+  deleteFromS3,
+  generateMergedAudioKey,
+} from "@/lib/s3";
+import { transcribeMultichannel } from "@/lib/deepgram";
+import { mergeToStereo } from "@/lib/audio";
 import { CallStatus, TranscriptStatus } from "@prisma/client";
 
 // ============================================
@@ -20,18 +20,7 @@ export interface ProcessingResult {
   summary?: {
     id: string;
     summary: string;
-    keyPoints: string[];
-    actionItems: string[];
-  };
-}
-
-interface AudioUploadWithUser {
-  id: string;
-  filePath: string;
-  userId: string;
-  user: {
-    id: string;
-    name: string | null;
+    transcript: string;
   };
 }
 
@@ -40,8 +29,8 @@ interface AudioUploadWithUser {
 // ============================================
 
 /**
- * Process a call: transcribe both audio files, merge, and generate summary
- * This is the main orchestration function for the AI pipeline
+ * Process a call: merge audio files, transcribe with Deepgram multichannel, and get summary
+ * Uses Deepgram's Nova-2 model with multichannel support and built-in summarization
  */
 export async function processCall(callId: string): Promise<ProcessingResult> {
   console.log(`[ProcessCall] Starting processing for call: ${callId}`);
@@ -112,54 +101,123 @@ export async function processCall(callId: string): Promise<ProcessingResult> {
       });
     });
 
-    // Step 3: Transcribe each audio file
-    const transcriptionResults = await transcribeAllAudioFiles(
-      call.audioUploads
+    // Step 3: Download both audio files
+    console.log(`[ProcessCall] Downloading audio files from S3...`);
+
+    // Find caller and callee uploads based on participant role
+    const callerParticipant = call.participants.find(
+      (p) => p.role === "caller"
+    );
+    const calleeParticipant = call.participants.find(
+      (p) => p.role === "callee"
     );
 
-    // Step 4: Merge transcripts
-    const [transcript1, transcript2] = transcriptionResults;
-    const speaker1Name = call.audioUploads[0].user.name || "Speaker 1";
-    const speaker2Name = call.audioUploads[1].user.name || "Speaker 2";
+    if (!callerParticipant || !calleeParticipant) {
+      throw new Error("Could not identify caller and callee participants");
+    }
+
+    const callerUpload = call.audioUploads.find(
+      (u) => u.userId === callerParticipant.userId
+    );
+    const calleeUpload = call.audioUploads.find(
+      (u) => u.userId === calleeParticipant.userId
+    );
+
+    if (!callerUpload || !calleeUpload) {
+      throw new Error("Could not find audio uploads for both participants");
+    }
+
+    // Update both uploads to PROCESSING
+    await prisma.audioUpload.updateMany({
+      where: { id: { in: [callerUpload.id, calleeUpload.id] } },
+      data: { status: TranscriptStatus.PROCESSING },
+    });
+
+    const [callerAudio, calleeAudio] = await Promise.all([
+      downloadFromS3(callerUpload.filePath),
+      downloadFromS3(calleeUpload.filePath),
+    ]);
 
     console.log(
-      `[ProcessCall] Merging transcripts for ${speaker1Name} and ${speaker2Name}`
+      `[ProcessCall] Downloaded caller audio: ${callerAudio.length} bytes`
+    );
+    console.log(
+      `[ProcessCall] Downloaded callee audio: ${calleeAudio.length} bytes`
     );
 
-    const mergedSegments = mergeTranscripts(
-      transcript1.transcription,
-      transcript2.transcription,
-      speaker1Name,
-      speaker2Name
-    );
+    // Step 4: Merge audio files into stereo (caller=left, callee=right)
+    console.log(`[ProcessCall] Merging audio files into stereo...`);
+    const mergedAudio = await mergeToStereo(callerAudio, calleeAudio);
+    console.log(`[ProcessCall] Merged audio size: ${mergedAudio.length} bytes`);
 
-    const mergedTranscript = formatMergedTranscript(mergedSegments);
+    // Step 5: Upload merged audio to S3
+    const mergedAudioKey = generateMergedAudioKey(callId);
+    console.log(
+      `[ProcessCall] Uploading merged audio to S3: ${mergedAudioKey}`
+    );
+    await uploadToS3(mergedAudioKey, mergedAudio, "audio/wav");
+
+    // Step 6: Transcribe with Deepgram multichannel + summarization
+    const callerName =
+      call.audioUploads.find((u) => u.userId === callerParticipant.userId)?.user
+        .name || "Caller";
+    const calleeName =
+      call.audioUploads.find((u) => u.userId === calleeParticipant.userId)?.user
+        .name || "Callee";
 
     console.log(
-      `[ProcessCall] Merged transcript length: ${mergedTranscript.length} chars`
+      `[ProcessCall] Transcribing with Deepgram (${callerName} vs ${calleeName})...`
+    );
+    const transcriptionResult = await transcribeMultichannel(
+      mergedAudio,
+      callerName,
+      calleeName
     );
 
-    // Step 5: Generate summary with GPT-4
-    console.log(`[ProcessCall] Generating summary with GPT-4...`);
-    const summaryResult = await generateSummary(mergedTranscript);
+    console.log(
+      `[ProcessCall] Transcription complete. Summary: ${transcriptionResult.summary.substring(
+        0,
+        100
+      )}...`
+    );
 
-    // Step 6: Save CallSummary to database
+    // Step 7: Save CallSummary to database
     const callSummary = await prisma.callSummary.create({
       data: {
         callId: call.id,
-        mergedTranscript,
-        summary: summaryResult.summary,
-        keyPoints: summaryResult.keyPoints,
-        actionItems: summaryResult.actionItems,
-        modelUsed: "gpt-4o",
+        mergedTranscript: transcriptionResult.transcript,
+        summary: transcriptionResult.summary,
+        language: transcriptionResult.language,
+        durationSeconds: transcriptionResult.duration,
+        modelUsed: "deepgram-nova-2",
       },
     });
 
-    // Step 7: Update call status to COMPLETED
+    // Step 8: Update call with merged audio path
     await prisma.call.update({
       where: { id: call.id },
-      data: { status: CallStatus.COMPLETED },
+      data: {
+        status: CallStatus.COMPLETED,
+        mergedAudioPath: mergedAudioKey,
+      },
     });
+
+    // Step 9: Update both uploads to COMPLETED
+    await prisma.audioUpload.updateMany({
+      where: { id: { in: [callerUpload.id, calleeUpload.id] } },
+      data: { status: TranscriptStatus.COMPLETED },
+    });
+
+    // Step 10: Delete individual audio files from S3
+    console.log(`[ProcessCall] Cleaning up individual audio files...`);
+    await Promise.all([
+      deleteFromS3(callerUpload.filePath).catch((err) =>
+        console.warn(`[ProcessCall] Failed to delete caller audio:`, err)
+      ),
+      deleteFromS3(calleeUpload.filePath).catch((err) =>
+        console.warn(`[ProcessCall] Failed to delete callee audio:`, err)
+      ),
+    ]);
 
     console.log(`[ProcessCall] Processing complete for call: ${callId}`);
 
@@ -168,9 +226,8 @@ export async function processCall(callId: string): Promise<ProcessingResult> {
       callId,
       summary: {
         id: callSummary.id,
-        summary: summaryResult.summary,
-        keyPoints: summaryResult.keyPoints,
-        actionItems: summaryResult.actionItems,
+        summary: transcriptionResult.summary,
+        transcript: transcriptionResult.transcript,
       },
     };
   } catch (error) {
@@ -200,101 +257,6 @@ export async function processCall(callId: string): Promise<ProcessingResult> {
 // ============================================
 // Helper Functions
 // ============================================
-
-/**
- * Transcribe all audio files and save transcriptions to database
- */
-async function transcribeAllAudioFiles(
-  audioUploads: AudioUploadWithUser[]
-): Promise<Array<{ uploadId: string; transcription: TranscriptionResult }>> {
-  const results: Array<{
-    uploadId: string;
-    transcription: TranscriptionResult;
-  }> = [];
-
-  for (const upload of audioUploads) {
-    console.log(`[Transcribe] Processing audio: ${upload.filePath}`);
-    console.log(
-      `[Transcribe] Upload ID: ${upload.id}, User: ${
-        upload.user.name || upload.userId
-      }`
-    );
-
-    // Update status to PROCESSING
-    await prisma.audioUpload.update({
-      where: { id: upload.id },
-      data: { status: TranscriptStatus.PROCESSING },
-    });
-
-    try {
-      // Download audio from S3
-      console.log(`[Transcribe] Downloading from S3: ${upload.filePath}`);
-      const audioBuffer = await downloadFromS3(upload.filePath);
-      console.log(
-        `[Transcribe] Downloaded ${audioBuffer.length} bytes from S3`
-      );
-
-      // Validate audio buffer
-      if (audioBuffer.length === 0) {
-        throw new Error(
-          `Empty audio file downloaded from S3: ${upload.filePath}`
-        );
-      }
-
-      // Transcribe with Whisper
-      console.log(`[Transcribe] Starting Whisper transcription...`);
-      const transcription = await transcribeAudio(
-        audioBuffer,
-        `${upload.id}.webm`
-      );
-      console.log(
-        `[Transcribe] Transcription complete: ${transcription.text.substring(
-          0,
-          100
-        )}...`
-      );
-
-      // Save transcription to database
-      await prisma.transcription.create({
-        data: {
-          audioUploadId: upload.id,
-          textContent: transcription.text,
-          rawResponse: JSON.parse(JSON.stringify(transcription)),
-          wordTimestamps: JSON.parse(JSON.stringify(transcription.segments)),
-          language: transcription.language,
-          durationSeconds: transcription.duration,
-        },
-      });
-
-      // Update upload status to COMPLETED
-      await prisma.audioUpload.update({
-        where: { id: upload.id },
-        data: { status: TranscriptStatus.COMPLETED },
-      });
-
-      results.push({ uploadId: upload.id, transcription });
-    } catch (error) {
-      console.error(`[Transcribe] Error transcribing ${upload.id}:`, error);
-      console.error(`[Transcribe] Error details:`, {
-        uploadId: upload.id,
-        filePath: upload.filePath,
-        userId: upload.userId,
-        errorMessage: error instanceof Error ? error.message : String(error),
-        errorStack: error instanceof Error ? error.stack : undefined,
-      });
-
-      // Update upload status to FAILED
-      await prisma.audioUpload.update({
-        where: { id: upload.id },
-        data: { status: TranscriptStatus.FAILED },
-      });
-
-      throw error; // Re-throw to fail the whole process
-    }
-  }
-
-  return results;
-}
 
 /**
  * Check if a call is ready for processing (both uploads complete)

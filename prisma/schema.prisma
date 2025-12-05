@@ -70,11 +70,12 @@ model VerificationToken {
 // ============================================
 
 model Call {
-  id        String     @id @default(cuid())
-  callId    String     @unique // Socket room ID or generated call ID
-  status    CallStatus @default(IN_PROGRESS)
-  startedAt DateTime   @default(now())
-  endedAt   DateTime?
+  id              String     @id @default(cuid())
+  callId          String     @unique // Socket room ID or generated call ID
+  status          CallStatus @default(IN_PROGRESS)
+  startedAt       DateTime   @default(now())
+  endedAt         DateTime?
+  mergedAudioPath String?    // S3 path to merged stereo audio file
 
   // Relations
   participants CallParticipant[]
@@ -156,15 +157,14 @@ model CallSummary {
   id     String @id @default(cuid())
   callId String @unique
 
-  // Merged & processed data
-  mergedTranscript String @db.Text // Chronological merged script
-  summary          String @db.Text // GPT-4 generated summary
-  keyPoints        Json? // Optional structured key points
-  actionItems      Json? // Optional action items extracted
+  // Transcription data from Deepgram
+  mergedTranscript String  @db.Text // Chronological merged script with speaker labels
+  summary          String  @db.Text // Deepgram generated summary
+  language         String? // Detected language
+  durationSeconds  Float?  // Total audio duration
 
   // Metadata
-  modelUsed  String @default("gpt-4")
-  tokensUsed Int?
+  modelUsed String @default("deepgram-nova-2")
 
   // Relations
   call Call @relation(fields: [callId], references: [id], onDelete: Cascade)
