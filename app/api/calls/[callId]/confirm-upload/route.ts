@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import prisma from "@/lib/db";
 import { authOptions } from "@/lib/auth";
+import { processCall } from "@/lib/services";
 
 type RouteContext = {
   params: Promise<{ callId: string }>;
@@ -84,6 +85,23 @@ export async function POST(request: NextRequest, context: RouteContext) {
         where: { id: call.id },
         data: { status: "PROCESSING" },
       });
+
+      // Auto-trigger AI processing in background
+      // We don't await this to return response quickly
+      // The processing runs asynchronously
+      console.log(`[ConfirmUpload] All uploads received for ${callId}, triggering processing...`);
+      
+      processCall(callId)
+        .then((result) => {
+          if (result.success) {
+            console.log(`[ConfirmUpload] Processing complete for ${callId}`);
+          } else {
+            console.error(`[ConfirmUpload] Processing failed for ${callId}:`, result.error);
+          }
+        })
+        .catch((err) => {
+          console.error(`[ConfirmUpload] Processing error for ${callId}:`, err);
+        });
     }
 
     return NextResponse.json({
@@ -95,6 +113,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
       },
       allParticipantsUploaded,
       readyForProcessing: allParticipantsUploaded,
+      processingStarted: allParticipantsUploaded,
     });
   } catch (error) {
     console.error("Error confirming upload:", error);
