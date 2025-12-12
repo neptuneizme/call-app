@@ -16,7 +16,7 @@ interface Participant {
 
 interface AudioUpload {
   id: string;
-  oderId: string;
+  userId: string;
   status: string;
   uploadedAt: string;
   fileSize: number;

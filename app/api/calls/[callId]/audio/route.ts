@@ -77,7 +77,7 @@ export async function GET(request: NextRequest, context: RouteContext) {
 
         return {
           id: upload.id,
-          oderId: upload.userId,
+          userId: upload.userId,
           userName: upload.user.name,
           downloadUrl,
           fileSize: upload.fileSize,

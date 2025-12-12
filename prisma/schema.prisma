@@ -1,6 +1,3 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
 generator client {
   provider = "prisma-client-js"
 }
@@ -8,10 +5,6 @@ generator client {
 datasource db {
   provider = "postgresql"
 }
-
-// ============================================
-// NextAuth Tables (for Google/GitHub OAuth)
-// ============================================
 
 model Account {
   id                String  @id @default(cuid())
@@ -26,8 +19,7 @@ model Account {
   scope             String?
   id_token          String? @db.Text
   session_state     String?
-
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user              User    @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([provider, providerAccountId])
 }
@@ -41,20 +33,17 @@ model Session {
 }
 
 model User {
-  id            String    @id @default(cuid())
-  name          String?
-  email         String?   @unique
-  emailVerified DateTime?
-  image         String?
-
-  // Relations
+  id               String            @id @default(cuid())
+  name             String?
+  email            String?           @unique
+  emailVerified    DateTime?
+  image            String?
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
   accounts         Account[]
-  sessions         Session[]
-  callParticipants CallParticipant[]
   audioUploads     AudioUpload[]
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  callParticipants CallParticipant[]
+  sessions         Session[]
 }
 
 model VerificationToken {
@@ -65,25 +54,18 @@ model VerificationToken {
   @@unique([identifier, token])
 }
 
-// ============================================
-// Video Call Tables
-// ============================================
-
 model Call {
-  id              String     @id @default(cuid())
-  callId          String     @unique // Socket room ID or generated call ID
-  status          CallStatus @default(IN_PROGRESS)
-  startedAt       DateTime   @default(now())
+  id              String            @id @default(cuid())
+  callId          String            @unique // Socket room ID or generated call ID
+  status          CallStatus        @default(IN_PROGRESS)
+  startedAt       DateTime          @default(now())
   endedAt         DateTime?
-  mergedAudioPath String?    // S3 path to merged stereo audio file
-
-  // Relations
-  participants CallParticipant[]
-  audioUploads AudioUpload[]
-  summary      CallSummary?
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  mergedAudioPath String? // S3 path to merged stereo audio file
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+  audioUploads    AudioUpload[]
+  participants    CallParticipant[]
+  summary         CallSummary?
 
   @@index([callId])
   @@index([status])
@@ -92,103 +74,74 @@ model Call {
 model CallParticipant {
   id       String    @id @default(cuid())
   callId   String
-  userId   String
-  role     String    @default("participant") // "caller" or "callee"
+  role     String    @default("participant")
   joinedAt DateTime  @default(now())
   leftAt   DateTime?
-
-  // Relations
-  call Call @relation(fields: [callId], references: [id], onDelete: Cascade)
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId   String
+  call     Call      @relation(fields: [callId], references: [id], onDelete: Cascade)
+  user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([callId, userId])
   @@index([callId])
   @@index([userId])
 }
 
-// ============================================
-// Audio Upload & Transcription Tables
-// ============================================
-
 model AudioUpload {
   id              String           @id @default(cuid())
   callId          String
   userId          String
-  filePath        String           // S3/storage path
-  fileSize        Int              // in bytes
+  filePath        String
+  fileSize        Int
   durationSeconds Float?
   mimeType        String           @default("audio/webm")
   status          TranscriptStatus @default(PENDING)
+  uploadedAt      DateTime         @default(now())
+  call            Call             @relation(fields: [callId], references: [id], onDelete: Cascade)
+  user            User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  transcription   Transcription?
 
-  // Relations
-  call          Call          @relation(fields: [callId], references: [id], onDelete: Cascade)
-  user          User          @relation(fields: [userId], references: [id], onDelete: Cascade)
-  transcription Transcription?
-
-  uploadedAt DateTime @default(now())
-
-  @@unique([callId, userId]) // One upload per user per call
+  @@unique([callId, userId])
   @@index([callId])
   @@index([status])
 }
 
 model Transcription {
-  id            String @id @default(cuid())
-  audioUploadId String @unique
-
-  // Whisper response data
-  textContent     String  @db.Text // Full transcript text
+  id              String      @id @default(cuid())
+  audioUploadId   String      @unique
+  textContent     String      @db.Text // Full transcript text
   rawResponse     Json // Whisper verbose_json response
   wordTimestamps  Json // Parsed timestamps for merging
   language        String? // Detected language
   durationSeconds Float?
-
-  // Relations
-  audioUpload AudioUpload @relation(fields: [audioUploadId], references: [id], onDelete: Cascade)
-
-  createdAt DateTime @default(now())
+  createdAt       DateTime    @default(now())
+  audioUpload     AudioUpload @relation(fields: [audioUploadId], references: [id], onDelete: Cascade)
 }
 
-// ============================================
-// Call Summary Table
-// ============================================
-
 model CallSummary {
-  id     String @id @default(cuid())
-  callId String @unique
-
-  // Transcription data from Deepgram
-  mergedTranscript String  @db.Text // Chronological merged script with speaker labels
-  summary          String? @db.Text // GPT generated summary (optional, filled later)
+  id               String   @id @default(cuid())
+  callId           String   @unique
+  mergedTranscript String   @db.Text // Chronological merged script with speaker labels
+  summary          String?  @db.Text // GPT generated summary (optional, filled later)
   language         String? // Transcription language
   durationSeconds  Float?  // Total audio duration
-
-  // Metadata
-  modelUsed String @default("deepgram-nova-3")
-
-  // Relations
-  call Call @relation(fields: [callId], references: [id], onDelete: Cascade)
-
-  generatedAt DateTime @default(now())
+  modelUsed        String   @default("deepgram-nova-3")
+  generatedAt      DateTime @default(now())
+  call             Call     @relation(fields: [callId], references: [id], onDelete: Cascade)
 
   @@index([callId])
 }
 
-// ============================================
-// Enums
-// ============================================
-
 enum CallStatus {
-  IN_PROGRESS // Call is active
-  AWAITING_UPLOADS // Call ended, waiting for audio uploads
-  PROCESSING // Both uploads received, transcribing/summarizing
-  COMPLETED // Summary generated successfully
-  FAILED // Processing failed
+  IN_PROGRESS
+  AWAITING_UPLOADS
+  PROCESSING
+  COMPLETED
+  FAILED
 }
 
 enum TranscriptStatus {
-  PENDING // Waiting to be processed
-  PROCESSING // Currently being transcribed
-  COMPLETED // Transcription done
-  FAILED // Transcription failed
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
 }
