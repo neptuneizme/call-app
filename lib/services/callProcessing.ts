@@ -182,12 +182,11 @@ export async function processCall(callId: string): Promise<ProcessingResult> {
     // Step 7: Save CallSummary to database (summary will be generated later with GPT)
     const callSummary = await prisma.callSummary.create({
       data: {
-        callId: call.id,
         mergedTranscript: transcriptionResult.transcript,
-        summary: null, // Will be filled later by GPT-5-mini
-        language: "vi",
-        durationSeconds: transcriptionResult.duration,
-        modelUsed: "deepgram-nova-3",
+        summary: "", // Empty string - will be filled later by GPT-5-mini
+        call: {
+          connect: { id: call.id },
+        },
       },
     });
 
