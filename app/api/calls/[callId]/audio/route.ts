@@ -61,36 +61,24 @@ export async function GET(request: NextRequest, context: RouteContext) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
-    // Filter uploads if userId specified
-    let uploads = call.audioUploads;
-    if (userId) {
-      uploads = uploads.filter((u) => u.userId === userId);
+    // Check if merged audio exists
+    if (!call.mergedAudioPath) {
+      return NextResponse.json(
+        { error: "Merged audio not available for this call" },
+        { status: 404 }
+      );
     }
 
-    // Generate presigned download URLs
-    const audioFiles = await Promise.all(
-      uploads.map(async (upload) => {
-        const downloadUrl = await getPresignedDownloadUrl(
-          upload.filePath,
-          3600 // 1 hour expiry
-        );
-
-        return {
-          id: upload.id,
-          userId: upload.userId,
-          userName: upload.user.name,
-          downloadUrl,
-          fileSize: upload.fileSize,
-          durationSeconds: upload.durationSeconds,
-          mimeType: upload.mimeType,
-          uploadedAt: upload.uploadedAt,
-        };
-      })
+    // Generate presigned download URL for merged audio
+    const mergedAudioUrl = await getPresignedDownloadUrl(
+      call.mergedAudioPath,
+      3600 // 1 hour expiry
     );
 
     return NextResponse.json({
       callId: call.callId,
-      audioFiles,
+      mergedAudioUrl,
+      mergedAudioPath: call.mergedAudioPath,
     });
   } catch (error) {
     console.error("Error fetching audio files:", error);

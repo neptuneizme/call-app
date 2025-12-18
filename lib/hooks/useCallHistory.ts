@@ -158,18 +158,19 @@ export function useCallHistory(
   // Download audio files
   const downloadAudio = useCallback(async (callId: string) => {
     const data = await fetcher<{
-      audioFiles: { downloadUrl: string; userName: string }[];
+      callId: string;
+      mergedAudioUrl: string;
+      mergedAudioPath: string;
     }>(`/api/calls/${callId}/audio`);
 
-    data.audioFiles.forEach((file) => {
-      const link = document.createElement("a");
-      link.href = file.downloadUrl;
-      link.download = `${file.userName || "audio"}.webm`;
-      link.target = "_blank";
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-    });
+    // Download the merged audio file
+    const link = document.createElement("a");
+    link.href = data.mergedAudioUrl;
+    link.download = `call-${callId}.wav`;
+    link.target = "_blank";
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
   }, []);
 
   return {
