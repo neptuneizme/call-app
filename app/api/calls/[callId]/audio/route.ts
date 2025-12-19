@@ -18,8 +18,6 @@ export async function GET(request: NextRequest, context: RouteContext) {
     }
 
     const { callId } = await context.params;
-    const { searchParams } = new URL(request.url);
-    const userId = searchParams.get("userId"); // Optional: get specific user's audio
 
     // Find the call
     const call = await prisma.call.findUnique({
