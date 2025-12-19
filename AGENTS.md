@@ -17,6 +17,7 @@
 | Authentication | NextAuth.js 4 (Google & GitHub OAuth)           |
 | Real-time      | Socket.IO for signaling, simple-peer for WebRTC |
 | Storage        | AWS S3 for audio file uploads                   |
+| AI Services    | Vercel AI SDK with Google Gemini 2.5 Flash      |
 | Data Fetching  | SWR                                             |
 
 ---
@@ -38,7 +39,10 @@ call-app/
 ├── lib/                      # Shared utilities
 │   ├── auth.ts               # NextAuth configuration
 │   ├── db.ts                 # Prisma client setup
-│   └── s3.ts                 # AWS S3 utilities
+│   ├── gemini.ts             # Gemini AI transcription & summarization
+│   ├── s3.ts                 # AWS S3 utilities
+│   └── services/             # Business logic services
+│       └── callProcessing.ts # Call audio processing pipeline
 ├── prisma/                   # Database schema & migrations
 ├── server/                   # Socket.IO signaling server
 └── types/                    # TypeScript type definitions
@@ -87,14 +91,13 @@ npx prisma migrate reset
 
 ### Key Models
 
-| Model             | Purpose                                     |
-| ----------------- | ------------------------------------------- |
-| `User`            | User accounts (OAuth via NextAuth)          |
-| `Call`            | Video call sessions with status tracking    |
-| `CallParticipant` | Links users to calls with join/leave times  |
-| `AudioUpload`     | Uploaded audio recordings per user per call |
-| `Transcription`   | Whisper transcription results               |
-| `CallSummary`     | GPT-generated call summaries                |
+| Model             | Purpose                                            |
+| ----------------- | -------------------------------------------------- |
+| `User`            | User accounts (OAuth via NextAuth)                 |
+| `Call`            | Video call sessions with status tracking           |
+| `CallParticipant` | Links users to calls with join/leave times         |
+| `AudioUpload`     | Uploaded audio recordings per user per call        |
+| `CallSummary`     | Gemini AI-generated transcripts and call summaries |
 
 ### Call Status Flow
 
@@ -131,6 +134,9 @@ AWS_REGION=<region>
 AWS_ACCESS_KEY_ID=<key>
 AWS_SECRET_ACCESS_KEY=<secret>
 AWS_S3_BUCKET_NAME=<bucket>
+
+# AI Services
+GOOGLE_GENERATIVE_AI_API_KEY=<key>  # For Gemini transcription & summarization
 ```
 
 ### AWS S3 CORS Configuration
@@ -217,6 +223,42 @@ npm run lint
 3. Media streams exchanged directly peer-to-peer
 4. Audio recording happens client-side during call
 5. On call end, audio uploaded to S3
+
+---
+
+## Audio Processing Pipeline
+
+### Overview
+
+The application uses **Google Gemini 2.5 Flash** for audio transcription and summarization. The AI SDK from Vercel provides structured output with type-safe schemas using Zod.
+
+### Processing Flow
+
+1. **Recording**: Each participant records audio locally during call (WebM format)
+2. **Upload**: Audio uploaded to S3 using presigned URLs after call ends
+3. **Merging**: Individual mono tracks merged into stereo WAV (caller=left, callee=right)
+4. **AI Processing**: Gemini analyzes stereo audio and returns:
+   - Full transcript with speaker labels and timestamps
+   - Conversation summary (2-3 paragraphs in Vietnamese)
+   - Key discussion points (3-7 items)
+   - Action items (0-5 items)
+5. **Storage**: Results saved to `CallSummary` table
+6. **Cleanup**: Individual audio files deleted, merged file retained
+
+### Key Features
+
+- **Single API Call**: Transcription and summarization happen together
+- **Speaker Diarization**: Uses stereo channel separation (left=caller, right=callee)
+- **Structured Output**: Zod schema ensures type-safe, predictable responses
+- **Vietnamese Support**: All outputs in Vietnamese language
+- **Cost Effective**: Gemini 2.5 Flash is optimized for speed and cost
+
+### Related Files
+
+- `lib/gemini.ts` - Gemini AI integration with structured output
+- `lib/services/callProcessing.ts` - Main processing orchestration
+- `lib/audio.ts` - FFmpeg audio merging utilities
+- `lib/s3.ts` - AWS S3 upload/download operations
 
 ---
 

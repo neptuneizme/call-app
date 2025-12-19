@@ -5,7 +5,7 @@ import {
   deleteFromS3,
   generateMergedAudioKey,
 } from "@/lib/s3";
-import { transcribeMultichannel } from "@/lib/deepgram";
+import { transcribeAndSummarizeAudio } from "@/lib/gemini";
 import { mergeToStereo } from "@/lib/audio";
 import { CallStatus, TranscriptStatus } from "@prisma/client";
 
@@ -28,8 +28,8 @@ export interface ProcessingResult {
 // ============================================
 
 /**
- * Process a call: merge audio files, transcribe with Deepgram multichannel
- * Uses Deepgram's Nova-3 model with multichannel support for Vietnamese transcription
+ * Process a call: merge audio files, transcribe and summarize with Gemini AI
+ * Uses Gemini 2.5 Flash with multimodal audio input for Vietnamese transcription and summarization
  */
 export async function processCall(callId: string): Promise<ProcessingResult> {
   console.log(`[ProcessCall] ========================================`);
@@ -158,7 +158,7 @@ export async function processCall(callId: string): Promise<ProcessingResult> {
     );
     await uploadToS3(mergedAudioKey, mergedAudio, "audio/wav");
 
-    // Step 6: Transcribe with Deepgram multichannel + summarization
+    // Step 6: Transcribe and summarize with Gemini AI
     const callerName =
       call.audioUploads.find((u) => u.userId === callerParticipant.userId)?.user
         .name || "Caller";
@@ -167,23 +167,32 @@ export async function processCall(callId: string): Promise<ProcessingResult> {
         .name || "Callee";
 
     console.log(
-      `[ProcessCall] Transcribing with Deepgram (${callerName} vs ${calleeName})...`
+      `[ProcessCall] Transcribing and summarizing with Gemini (${callerName} vs ${calleeName})...`
     );
-    const transcriptionResult = await transcribeMultichannel(
+    const transcriptionResult = await transcribeAndSummarizeAudio(
       mergedAudio,
       callerName,
       calleeName
     );
 
     console.log(
-      `[ProcessCall] Transcription complete. Duration: ${transcriptionResult.duration}s`
+      `[ProcessCall] Transcription and summarization complete. Duration: ${transcriptionResult.duration}s`
+    );
+    console.log(
+      `[ProcessCall] Summary generated with ${transcriptionResult.keyPoints.length} key points and ${transcriptionResult.actionItems.length} action items`
     );
 
-    // Step 7: Save CallSummary to database (summary will be generated later with GPT)
+    // Step 7: Save CallSummary to database with Gemini-generated summary
+    const summaryText = formatSummaryForDatabase(
+      transcriptionResult.summary,
+      transcriptionResult.keyPoints,
+      transcriptionResult.actionItems
+    );
+
     const callSummary = await prisma.callSummary.create({
       data: {
         mergedTranscript: transcriptionResult.transcript,
-        summary: "", // Empty string - will be filled later by GPT-5-mini
+        summary: summaryText,
         call: {
           connect: { id: call.id },
         },
@@ -253,6 +262,41 @@ export async function processCall(callId: string): Promise<ProcessingResult> {
 // ============================================
 // Helper Functions
 // ============================================
+
+/**
+ * Format summary, key points, and action items into a structured text
+ */
+function formatSummaryForDatabase(
+  summary: string,
+  keyPoints: string[],
+  actionItems: string[]
+): string {
+  const sections: string[] = [];
+
+  // Main summary
+  sections.push("## Tóm tắt cuộc gọi\n");
+  sections.push(summary);
+  sections.push("");
+
+  // Key points
+  if (keyPoints.length > 0) {
+    sections.push("## Điểm chính\n");
+    keyPoints.forEach((point, index) => {
+      sections.push(`${index + 1}. ${point}`);
+    });
+    sections.push("");
+  }
+
+  // Action items
+  if (actionItems.length > 0) {
+    sections.push("## Hành động cần thực hiện\n");
+    actionItems.forEach((item) => {
+      sections.push(`- ${item}`);
+    });
+  }
+
+  return sections.join("\n");
+}
 
 /**
  * Check if a call is ready for processing (both uploads complete)
