@@ -299,36 +299,6 @@ function formatSummaryForDatabase(
 }
 
 /**
- * Check if a call is ready for processing (both uploads complete)
- */
-export async function isCallReadyForProcessing(
-  callId: string
-): Promise<boolean> {
-  const call = await prisma.call.findUnique({
-    where: { callId },
-    include: {
-      audioUploads: true,
-      participants: true,
-    },
-  });
-
-  if (!call) return false;
-
-  // Check if we have uploads from all participants
-  const uploadUserIds = new Set(call.audioUploads.map((u) => u.userId));
-  const participantUserIds = new Set(call.participants.map((p) => p.userId));
-
-  // All participants must have uploaded
-  for (const participantId of participantUserIds) {
-    if (!uploadUserIds.has(participantId)) {
-      return false;
-    }
-  }
-
-  return true;
-}
-
-/**
  * Get processing status for a call
  */
 export async function getProcessingStatus(callId: string): Promise<{

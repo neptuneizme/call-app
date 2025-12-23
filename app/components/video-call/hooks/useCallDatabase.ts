@@ -13,12 +13,9 @@ interface JoinCallResponse {
 }
 
 interface UseCallDatabaseReturn {
-  currentCallId: string | null;
   createCallRecord: (callId: string) => Promise<{ callId: string } | null>;
   joinCallRecord: (callId: string) => Promise<{ callId: string } | null>;
   endCallRecord: (callIdOverride?: string) => Promise<void>;
-  setCurrentCallId: (callId: string | null) => void;
-  getCurrentCallId: () => string | null;
   isCreating: boolean;
   isJoining: boolean;
   isEnding: boolean;
@@ -122,12 +119,9 @@ export function useCallDatabase(): UseCallDatabaseReturn {
   );
 
   return {
-    currentCallId: currentCallIdRef.current,
     createCallRecord,
     joinCallRecord,
     endCallRecord,
-    setCurrentCallId,
-    getCurrentCallId,
     isCreating,
     isJoining,
     isEnding,

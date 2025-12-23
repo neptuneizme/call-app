@@ -116,6 +116,7 @@ export async function GET(request: NextRequest) {
                 ? call.summary.summary.substring(0, 200) +
                   (call.summary.summary.length > 200 ? "..." : "")
                 : "Bản ghi đã sẵn sàng",
+              fullSummary: call.summary.summary,
               transcript: call.summary.mergedTranscript,
               generatedAt: call.summary.generatedAt,
             }

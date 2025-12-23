@@ -112,32 +112,3 @@ export async function mergeToStereo(
     }
   }
 }
-
-/**
- * Get audio duration in seconds from a buffer
- */
-export async function getAudioDuration(audioBuffer: Buffer): Promise<number> {
-  const tempDir = await mkdtemp(join(tmpdir(), "audio-duration-"));
-  const tempPath = join(tempDir, "audio.webm");
-
-  try {
-    await writeFile(tempPath, audioBuffer);
-
-    return new Promise<number>((resolve, reject) => {
-      ffmpeg.ffprobe(tempPath, (err, metadata) => {
-        if (err) {
-          reject(err);
-        } else {
-          resolve(metadata.format.duration || 0);
-        }
-      });
-    });
-  } finally {
-    try {
-      await unlink(tempPath).catch(() => {});
-      await rmdir(tempDir).catch(() => {});
-    } catch {
-      // Ignore cleanup errors
-    }
-  }
-}

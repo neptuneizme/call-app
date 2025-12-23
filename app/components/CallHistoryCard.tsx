@@ -40,6 +40,7 @@ interface AudioUpload {
 interface Summary {
   id: string;
   preview: string;
+  fullSummary: string | null;
   transcript: string | null;
   generatedAt: string;
 }
@@ -110,6 +111,7 @@ export default function CallHistoryCard({
 }: CallHistoryCardProps) {
   const [isExpanded, setIsExpanded] = useState(false);
   const [showTranscript, setShowTranscript] = useState(false);
+  const [expandSummary, setExpandSummary] = useState(false);
 
   const getParticipantUploadStatus = (userId: string) => {
     return call.audioUploads.find((u) => u.userId === userId);
@@ -319,7 +321,20 @@ export default function CallHistoryCard({
                 )}
               </div>
               <div className="bg-gray-700/50 rounded-lg p-3">
-                <p className="text-gray-300 text-sm">{call.summary.preview}</p>
+                <div className="text-gray-300 text-sm whitespace-pre-wrap">
+                  {expandSummary || !call.summary.fullSummary
+                    ? call.summary.fullSummary || call.summary.preview
+                    : call.summary.preview}
+                </div>
+                {call.summary.fullSummary &&
+                  call.summary.fullSummary.length > 200 && (
+                    <button
+                      onClick={() => setExpandSummary(!expandSummary)}
+                      className="text-xs text-blue-400 hover:text-blue-300 mt-2 transition-colors"
+                    >
+                      {expandSummary ? "Thu gọn" : "Xem đầy đủ"}
+                    </button>
+                  )}
                 <p className="text-xs text-gray-500 mt-2">
                   Generated {formatDate(call.summary.generatedAt)}
                 </p>

@@ -10,7 +10,6 @@ interface UseMediaStreamReturn {
   isVideoOff: boolean;
   toggleMic: () => void;
   toggleVideo: () => void;
-  stopAllTracks: () => void;
 }
 
 export function useMediaStream(): UseMediaStreamReturn {
@@ -76,13 +75,6 @@ export function useMediaStream(): UseMediaStreamReturn {
     }
   }, []);
 
-  // Stop all tracks
-  const stopAllTracks = useCallback(() => {
-    if (streamRef.current) {
-      streamRef.current.getTracks().forEach((track) => track.stop());
-    }
-  }, []);
-
   return {
     stream,
     isLoading,
@@ -91,6 +83,5 @@ export function useMediaStream(): UseMediaStreamReturn {
     isVideoOff,
     toggleMic,
     toggleVideo,
-    stopAllTracks,
   };
 }

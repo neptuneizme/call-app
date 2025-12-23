@@ -98,23 +98,10 @@ model AudioUpload {
   uploadedAt      DateTime         @default(now())
   call            Call             @relation(fields: [callId], references: [id], onDelete: Cascade)
   user            User             @relation(fields: [userId], references: [id], onDelete: Cascade)
-  transcription   Transcription?
 
   @@unique([callId, userId])
   @@index([callId])
   @@index([status])
-}
-
-model Transcription {
-  id              String      @id @default(cuid())
-  audioUploadId   String      @unique
-  textContent     String      @db.Text // Full transcript text
-  rawResponse     Json // Whisper verbose_json response
-  wordTimestamps  Json // Parsed timestamps for merging
-  language        String? // Detected language
-  durationSeconds Float?
-  createdAt       DateTime    @default(now())
-  audioUpload     AudioUpload @relation(fields: [audioUploadId], references: [id], onDelete: Cascade)
 }
 
 model CallSummary {

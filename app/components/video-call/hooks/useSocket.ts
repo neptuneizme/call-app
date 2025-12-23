@@ -19,7 +19,6 @@ interface IncomingCall {
 }
 
 interface UseSocketReturn {
-  getSocket: () => Socket | null;
   socketId: string;
   isConnected: boolean;
   incomingCall: IncomingCall | null;
@@ -145,11 +144,7 @@ export function useSocket(socketUrl: string): UseSocketReturn {
     setIncomingCall(null);
   }, []);
 
-  // Getter function for socket to avoid accessing ref during render
-  const getSocket = useCallback(() => socketRef.current, []);
-
   return {
-    getSocket,
     socketId,
     isConnected,
     incomingCall,
