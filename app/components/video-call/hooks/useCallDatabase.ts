@@ -32,15 +32,6 @@ export function useCallDatabase(): UseCallDatabaseReturn {
     postFetcher<CreateCallResponse>
   );
 
-  const setCurrentCallId = useCallback((callId: string | null) => {
-    console.log("setCurrentCallId:", callId);
-    currentCallIdRef.current = callId;
-  }, []);
-
-  const getCurrentCallId = useCallback(() => {
-    return currentCallIdRef.current;
-  }, []);
-
   // Join an existing call record
   const joinCallRecord = useCallback(
     async (callId: string): Promise<{ callId: string } | null> => {
